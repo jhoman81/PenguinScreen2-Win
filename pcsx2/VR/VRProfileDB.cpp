@@ -2587,6 +2587,27 @@ const VR::ProfileDB::Profile* VR::ProfileDB::Lookup(const std::string_view seria
 	if (std::find(profile.crcs.begin(), profile.crcs.end(), crc) != profile.crcs.end())
 		return &profile;
 
+	// A serial can cover several builds (TimeSplitters SLUS-20090 has v1.10 and
+	// v2.00), and a profile's addresses only hold for the CRCs it lists. Skipping
+	// it is right, but doing so silently leaves a plain flat screen with no hint
+	// why; say so once per disc.
+	{
+		static std::mutex s_crc_miss_mutex;
+		static std::unordered_set<std::string> s_crc_miss_logged;
+		const std::string key = fmt::format("{}:{:08X}", StringUtil::toLower(serial), crc);
+		std::lock_guard lock(s_crc_miss_mutex);
+		if (s_crc_miss_logged.insert(key).second)
+		{
+			std::string listed;
+			for (const u32 c : profile.crcs)
+				listed += fmt::format("{}{:08X}", listed.empty() ? "" : ", ", c);
+			Console.WarningFmt("(VR) ProfileDB: '{}' has a VR profile for CRC(s) {}, but this disc is CRC {:08X} "
+							   "(a different build), so the profile is not applied: no stereo or head camera. "
+							   "To try it anyway, add this CRC to a user copy of the profile; its camera addresses "
+							   "may not match this build.",
+				serial, listed, crc);
+		}
+	}
 	return nullptr;
 }
 

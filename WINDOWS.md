@@ -63,6 +63,15 @@ Vulkan graphics binding, and extensions.
 If the game runs flat on your monitor, it was started without `--vr`
 (use the .bat), or no runtime is active (`-Check` says which).
 
+If you're in the headset but get a plain screen fixed in the room, with no
+depth and no head camera, no VR profile matched this disc. Profiles match by
+serial and CRC, and one serial can cover several builds (TimeSplitters
+SLUS-20090 has v1.10 and v2.00). The log says so with a line containing
+`has a VR profile for CRC(s)`. Copy the shipped profile into your user
+profiles folder and add your CRC to its `crcs:` list: stereo and the
+head-following screen work on any build. The head camera's addresses may
+not, and its guards keep it off when they don't hold.
+
 ## Profiles and tools
 
 - **User VR profiles:** `Documents\PenguinScreen2\vrprofiles`. They work
