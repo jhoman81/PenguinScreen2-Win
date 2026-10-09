@@ -821,9 +821,54 @@ namespace VR::CameraDriver
 		bool s_hooks_installed = false;
 		u32 s_hooks_crc = 0;
 		std::vector<u32> s_hook_original;
+		std::vector<u32> s_hook_scratch_last;  // bit pattern we last wrote to each hook's scratch word
+		// Caves/scratch words the game was caught writing over (per CRC). A hook using one stays out
+		// until the profile names a different address: reinstalling would just crash the game again.
+		std::vector<u32> s_hook_clobbered;
+		std::vector<u32> s_hook_warned;  // hook sites already reported as calling the wrong function
+		u32 s_hook_clobbered_crc = 0;
+
+		bool HookBlocked(const ProfileDB::CameraCodeHook& h)
+		{
+			for (const u32 a : s_hook_clobbered)
+				if (a == h.cave_address || a == h.scratch_address)
+					return true;
+			return false;
+		}
+
+		// True if an earlier hook in the list owns the same scratch word (shared scratch is legal for a
+		// sin/cos pair fed the same source); only the first owner checks it for outside writes.
+		bool ScratchSharedWithEarlier(const ProfileDB::CameraProfile& cam, size_t i)
+		{
+			for (size_t j = 0; j < i; j++)
+				if (cam.code_hooks[j].enabled && cam.code_hooks[j].scratch_address == cam.code_hooks[i].scratch_address)
+					return true;
+			return false;
+		}
+
+		// The game has written over a hook's cave or scratch word: that memory is not free. Put the
+		// original JAL back (only if our trampoline is still there) and keep the hook out.
+		void DropClobberedHook(const ProfileDB::CameraProfile& cam, size_t i, u32 block, u32 where, u32 found, u32 expected)
+		{
+			const ProfileDB::CameraCodeHook& h = cam.code_hooks[i];
+			if (static_cast<u32>(memRead32(h.hook_address)) == AssembleHook(h).trampoline)
+				memWrite32(h.hook_address, s_hook_original[i]);
+			s_hook_original[i] = 0;
+			s_hook_clobbered.push_back(block);
+			Console.Warning("(VR) CameraDriver: the game overwrote code-hook memory at 0x%08X (0x%08X, expected 0x%08X) "
+							"for the hook at 0x%08X; hook removed. That address is not free - give the hook a different "
+							"%s in the profile.",
+				where, found, expected, h.hook_address, (block == h.scratch_address) ? "scratchAddress" : "caveAddress");
+		}
 
 		void ApplyCodeHooks(const ProfileDB::CameraProfile& cam, u32 crc)
 		{
+			if (s_hook_clobbered_crc != crc)
+			{
+				s_hook_clobbered.clear();
+				s_hook_warned.clear();
+				s_hook_clobbered_crc = crc;
+			}
 			if (s_hooks_installed && s_hooks_crc == crc)
 			{
 				bool intact = true;
@@ -831,31 +876,60 @@ namespace VR::CameraDriver
 				{
 					if (s_hook_original[i] == 0)
 						continue;
-					if (static_cast<u32>(memRead32(cam.code_hooks[i].hook_address)) != AssembleHook(cam.code_hooks[i]).trampoline)
+					const ProfileDB::CameraCodeHook& h = cam.code_hooks[i];
+					const AssembledHook a = AssembleHook(h);
+					for (int w = 0; w < 5; w++)
 					{
-						intact = false;
-						break;
+						const u32 at = h.cave_address + static_cast<u32>(w) * 4u;
+						const u32 got = static_cast<u32>(memRead32(at));
+						if (got != a.cave[w])
+						{
+							DropClobberedHook(cam, i, h.cave_address, at, got, a.cave[w]);
+							break;
+						}
 					}
+					if (s_hook_original[i] != 0 && static_cast<u32>(memRead32(h.hook_address)) != a.trampoline)
+						intact = false;
 				}
 				if (intact)
 					return;
 				s_hooks_installed = false;
 			}
+			// A hook still installed from before keeps its original; one whose trampoline the game
+			// replaced (code reloaded) is installed afresh below.
+			std::vector<u32> keep(cam.code_hooks.size(), 0);
+			for (size_t i = 0; i < cam.code_hooks.size() && i < s_hook_original.size(); i++)
+				if (s_hook_original[i] != 0 && static_cast<u32>(memRead32(cam.code_hooks[i].hook_address)) == AssembleHook(cam.code_hooks[i]).trampoline)
+					keep[i] = s_hook_original[i];
 			s_hook_original.assign(cam.code_hooks.size(), 0);
+			s_hook_scratch_last.assign(cam.code_hooks.size(), 0);
 			size_t installed = 0;
 			for (size_t i = 0; i < cam.code_hooks.size(); i++)
 			{
 				const ProfileDB::CameraCodeHook& h = cam.code_hooks[i];
-				if (!h.enabled)
+				if (!h.enabled || HookBlocked(h))
 					continue;
-				const u32 orig = static_cast<u32>(memRead32(h.hook_address));
+				const AssembledHook a = AssembleHook(h);
+				const u32 want = MipsJal(h.tail_jump_address);
+				u32 orig = static_cast<u32>(memRead32(h.hook_address));
+				if (orig == a.trampoline)
+					orig = keep[i] ? keep[i] : want;  // ours from an earlier install: the original called tailJump
 				if ((orig >> 26) != 0x03u)
 				{
 					DevCon.WriteLn("(VR) CameraDriver: code-hook site 0x%08X is not a JAL (0x%08X); skipping install.",
 						h.hook_address, orig);
 					continue;
 				}
-				const AssembledHook a = AssembleHook(h);
+				if (orig != want)
+				{
+					if (std::find(s_hook_warned.begin(), s_hook_warned.end(), h.hook_address) != s_hook_warned.end())
+						continue;
+					s_hook_warned.push_back(h.hook_address);
+					Console.Warning("(VR) CameraDriver: code-hook site 0x%08X calls 0x%08X, not the profile's tailJump "
+									"0x%08X; skipping it (wrong address, or a different build of the game?).",
+						h.hook_address, (orig & 0x03FFFFFFu) << 2, h.tail_jump_address);
+					continue;
+				}
 				for (int w = 0; w < 5; w++)
 					memWrite32(h.cave_address + static_cast<u32>(w) * 4u, a.cave[w]);
 				memWrite32(h.scratch_address, 0);
@@ -900,13 +974,27 @@ namespace VR::CameraDriver
 		{
 			if (!s_hooks_installed)
 				return;
-			for (size_t i = 0; i < cam.code_hooks.size() && i < s_hook_original.size(); i++)
+			for (size_t i = 0; i < cam.code_hooks.size() && i < s_hook_original.size() && i < s_hook_scratch_last.size(); i++)
 			{
 				if (s_hook_original[i] == 0)
 					continue;
 				const ProfileDB::CameraCodeHook& h = cam.code_hooks[i];
+				if (!ScratchSharedWithEarlier(cam, i))
+				{
+					const u32 got = static_cast<u32>(memRead32(h.scratch_address));
+					if (got != s_hook_scratch_last[i])
+					{
+						DropClobberedHook(cam, i, h.scratch_address, h.scratch_address, got, s_hook_scratch_last[i]);
+						continue;
+					}
+				}
 				const float v = SelectSource(h.source, e, pose) * h.axis_sign * h.scale;
-				EncodeAndWrite(h.scratch_address, v, ProfileDB::CameraEncoding::F32);
+				const u32 bits = std::isfinite(v) ? std::bit_cast<u32>(v) : 0u;
+				memWrite32(h.scratch_address, bits);
+				s_hook_scratch_last[i] = bits;
+				for (size_t j = i + 1; j < cam.code_hooks.size() && j < s_hook_scratch_last.size(); j++)
+					if (cam.code_hooks[j].scratch_address == h.scratch_address)
+						s_hook_scratch_last[j] = bits;
 			}
 		}
 
@@ -1254,6 +1342,13 @@ namespace VR::CameraDriver
 	void OnStateLoaded()
 	{
 		ResetDeltaState();
+		// EE RAM was just replaced, so whatever trampolines, caves and silence patches it holds are
+		// the savestate's, not ours. Forget our install state; the next armed vsync reinstalls (a
+		// trampoline saved into the state is recognised and its original recovered from tailJump).
+		s_hooks_installed = false;
+		s_hook_original.clear();
+		s_hook_scratch_last.clear();
+		s_silence_applied = false;
 	}
 
 	void RequestRecenter()
