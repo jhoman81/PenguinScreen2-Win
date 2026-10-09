@@ -269,7 +269,9 @@ Narrow with fresh snapshots and `--within field` until a handful remain, then
 ## Status
 
 **Tested in the headset:** head yaw, pitch and roll work (DRAFT 0.2); the
-No-Interlacing patch removes the shimmer.
+No-Interlacing patch removes the shimmer; DRAFT 0.5 (70° × 86° view, flat
+lag-matched screen, `lagMs: 60`) at 4× internal resolution looks and feels
+right.
 
 **Verified:** the profile (DRAFT 0.5) loads with zero issues in the real
 loader (validator built from `pcsx2/VR/VRProfileDB.cpp`); the only message is
@@ -280,4 +282,4 @@ The lag-matching math (history lookup, per-axis matching, holding the pose
 between game frames) was checked in a standalone test, and the changed
 emulator sources pass a syntax check against the repo's headers.
 
-**Not yet:** `lagMs` in the headset, stereo numbers, a field flag.
+**Not yet:** fine-tuning `lagMs`, stereo numbers (`qhist`), a field flag.
