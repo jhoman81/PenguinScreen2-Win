@@ -881,9 +881,14 @@ namespace VR::CameraDriver
 			{
 				if (s_hook_original[i] == 0)
 					continue;
-				memWrite32(cam.code_hooks[i].hook_address, s_hook_original[i]);
+				// Only undo our own trampoline: if the game has since reloaded that code (or put an
+				// overlay there), writing the old JAL back would corrupt whatever lives there now.
+				if (static_cast<u32>(memRead32(cam.code_hooks[i].hook_address)) == AssembleHook(cam.code_hooks[i]).trampoline)
+				{
+					memWrite32(cam.code_hooks[i].hook_address, s_hook_original[i]);
+					restored++;
+				}
 				s_hook_original[i] = 0;
-				restored++;
 			}
 			if (restored > 0)
 				DevCon.WriteLn("(VR) CameraDriver: %zu camera code-hook(s) restored.", restored);
