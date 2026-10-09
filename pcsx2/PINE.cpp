@@ -279,6 +279,11 @@ bool PINEServer::Initialize(int slot)
 
 	s_thread = std::thread(&PINEServer::MainLoop);
 
+#ifdef _WIN32
+	Console.WriteLnFmt("PINE: listening on 127.0.0.1:{}", slot);
+#else
+	Console.WriteLnFmt("PINE: listening on {}", s_socket_name);
+#endif
 	return true;
 }
 

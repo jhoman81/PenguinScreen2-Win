@@ -81,9 +81,12 @@ not, and its guards keep it off when they don't hold.
   in effect: `(VR) ProfileDB: SLUS-20090 (CRC B4A004F2) uses the user profile ...`.
   Otherwise profiles work exactly as on Linux; see
   `bin/resources/vr-profiles/README.md`.
-- **PINE** (Settings → Advanced): on Windows it listens on TCP
-  `127.0.0.1:28011`, not a Unix socket. The VR extensions (memory watch, depth
-  histogram flush) are there too.
+- **PINE:** turn on **Tools → Show Advanced Settings**, then **Settings →
+  Advanced → PINE Settings → Enable**, and restart the emulator. On Windows
+  it listens on TCP `127.0.0.1:28011`, not a Unix socket; the log says
+  `PINE: listening on 127.0.0.1:28011`. Don't edit `PenguinScreen2.ini` while
+  the emulator is open, because it writes its in-memory settings back over the
+  file. The VR extensions (memory watch, depth histogram flush) are there too.
 - **Depth histogram:** `PenguinScreen2-VR.bat --qhist-live C:\Users\you\qhist`.
 
 ## Building from source
