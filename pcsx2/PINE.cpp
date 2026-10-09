@@ -21,6 +21,7 @@
 #endif
 #include "vtlb.h"
 #include "common/Error.h"
+#include "common/Path.h"
 #include "common/Threading.h"
 
 #include <atomic>
@@ -558,8 +559,12 @@ PINEServer::IPCBuffer PINEServer::ParseCommand(std::span<u8> buf, std::vector<u8
 					h.key.frame = g_FrameCount;
 					h.key.widescreen_hack = EmuConfig.EnableWideScreenPatches;
 					const u32 seq = s_seq.fetch_add(1) + 1;
-					const std::string path = fmt::format("{}/qhist-live-{}-{:03d}-f{}.json",
-						VR::QhistLiveDir(), h.key.serial.empty() ? "unknown" : h.key.serial, seq, h.key.frame);
+					// Path::Combine, not "{}/...": on Windows an absolute path becomes an extended
+					// "\\?\" path, where a forward slash is not a separator, so the file could
+					// never be created there.
+					const std::string path = Path::Combine(VR::QhistLiveDir(),
+						fmt::format("qhist-live-{}-{:03d}-f{}.json", h.key.serial.empty() ? "unknown" : h.key.serial,
+							seq, h.key.frame));
 					std::string err;
 					const bool ok = h.WriteJson(path, &err);
 					if (ok)
