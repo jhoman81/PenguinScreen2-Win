@@ -171,7 +171,7 @@ SCUS-97328:
     writes:
       # Seat offset from the bumper cam, in GT4 units (metres, going by the
       # chase cam sitting 6 behind the car). Edit the bias numbers while
-      # racing: the profile hot-reloads on save. GT4's translate moves the
+      # racing, then flip a VR setting to reload. GT4's translate moves the
       # world rather than the camera, and its axes look like OpenXR's (x
       # right, y up, z backward), so every sign comes out inverted: negative
       # y moves you UP (confirmed), positive x moves you LEFT and positive z

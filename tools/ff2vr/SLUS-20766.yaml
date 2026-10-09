@@ -1,0 +1,56 @@
+# Fatal Frame II: Crimson Butterfly (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.1
+# Author: Joshua Homan (with Claude). Your own work; not derived from the
+# shipped CC BY-NC profiles, so license it however you like.
+#
+# Install: copy into your user profiles folder, keeping this file name:
+#   Windows: Documents\PenguinScreen2\vrprofiles\   (no hyphen; not bin\resources)
+# When the game boots (or right after you save this file while it runs), the log
+# (Documents\PenguinScreen2\logs\emulog.txt) says
+#   (VR) ProfileDB: SLUS-20766 (CRC 9A51B627) uses the user profile <this file>
+# The Undub builds share the serial but not the CRC (1C6C1B71, 1C6C1DB6), so
+# they log "has a VR profile for CRC(s) 9A51B627, but this disc is ..." instead.
+#
+# Status of each block:
+#   stereo - live. `convergence` is a placeholder until `gt4cam.py qhist`
+#            has seen a few minutes of play; it prints tuned numbers.
+#   camera - not yet. Target: head look in the Camera Obscura (first person).
+#            The third-person exploration cameras stay stereo only.
+#
+# Stereo needs a profile here: with "use game profile" on (the default), a game
+# without one gets no stereo at all, whatever the global sliders say.
+
+SLUS-20766:
+  name: "Fatal Frame II: Crimson Butterfly"
+  crcs: [0x9A51B627]
+  tier: stereo
+  notes: "Draft. Stereo only for now; Camera Obscura head look to come."
+
+  # Stereo only, so the screen stays put in the room. Once the Camera Obscura
+  # turns with your head this has to become `follow: head` (or the view would
+  # turn twice), and that applies to the exploration cameras too unless the
+  # emulator learns to switch it per scene.
+  screen: { follow: world }
+
+  stereo:
+    # Displacement per eye in NDC is  separation * max(0, 1 - convergence*Q),
+    # Q = 1/w. Anything nearer than `convergence` (in the game's w units) sits
+    # on the screen surface; everything farther goes into it, reaching
+    # `separation` at infinity. 0.010 is 60 arcmin on the default 2 m /
+    # 100 degree screen (1 degree, the usual limit for the jump between a flat
+    # overlay and the world behind it). The loader prints an advisory for
+    # anything above 0.0033; GT4 and the shipped Ace Combat 5 get it too.
+    # FF2 draws overlays over the world in the Camera Obscura (the capture
+    # circle, the filament), so lower this if aiming at a ghost past the circle
+    # feels like refocusing.
+    separation: 0.010
+    convergence: 2.0    # PLACEHOLDER - FF2's w units are unknown; replace with qhist's suggestion
+    uvDraws: screen     # informational in this build (UV/FST draws always stay flat)
+    pinUniformQ: false  # turn on if the full-screen filters (film grain, viewfinder
+                        # tint, flashlight) float in depth or double
+    zDrivenDepth: false # turn on if decals, shadows or glow separate from the
+                        # surfaces they sit on (multi-pass Q mismatch)
+
+    # Later: a scene rule keyed on a "Camera Obscura raised" flag, if the
+    # viewfinder wants different numbers from exploration.
+    # scenes:
+    #   - { when: { address: 0x________, equals: _, width: 1 }, convergence: _, label: viewfinder }

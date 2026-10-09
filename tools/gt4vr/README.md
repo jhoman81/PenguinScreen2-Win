@@ -24,8 +24,10 @@ for an interior option.
    should say `(VR) ProfileDB: SCUS-97328 (CRC 77E61C8A) uses the user profile …`.
    If it says `has a VR profile for CRC(s) 77E61C8A, but this disc is …`
    instead, your disc is a different build: tell me the CRC, because the
-   GT4-specific addresses below would differ. Edits hot-reload; the log
-   prints `profile folder change detected — reloading`.
+   GT4-specific addresses below would differ. The emulator rereads the
+   profile folder at boot and whenever a VR setting changes, not on save: after
+   an edit, flip any VR setting (Stereo off and on) and the log prints
+   `profile folder change detected — reloading`.
 2. **GT4 settings.** In GT4's Options → Screen, choose Progressive (480p) and
    16:9. Interlaced 480i confuses everything downstream. Optionally, in the
    emulator's game properties → Patches, enable "Autoboot in 480p" and
@@ -221,7 +223,7 @@ things per axis:
   what look like metres. GT4's translate moves the world rather than the
   camera, so the signs are inverted: negative y raises you (-0.30 is about
   right), positive x moves you left and positive z forward. Edit the numbers
-  while racing; the profile hot-reloads when you save. One value covers every
+  while racing, then flip a VR setting to reload (section 0). One value covers every
   car for now, so right- and left-hand-drive cars want opposite x.
 - **Positional tracking:** your head position, clamped to ±0.3 m per axis.
   It's measured from where the headset's own recenter put it (hold the Oculus
