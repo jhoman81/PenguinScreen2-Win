@@ -1083,6 +1083,7 @@ set(pcsx2VRSources
 )
 
 set(pcsx2VRHeaders
+	VR/VREnv.h
 	VR/CameraDriver.h
 	VR/ControlQuads.h
 	VR/SplitState.h
@@ -1358,6 +1359,13 @@ function(setup_main_executable target)
 		if(MSVC)
 			install(FILES $<TARGET_PDB_FILE:${target}> DESTINATION ${CMAKE_SOURCE_DIR}/bin)
 		endif()
+		if(ENABLE_VR)
+			# Windows counterpart of launch-vr-session.sh: adds --vr and reports the active OpenXR runtime.
+			install(FILES
+				"${CMAKE_SOURCE_DIR}/tools/windows/PenguinScreen2-VR.bat"
+				"${CMAKE_SOURCE_DIR}/tools/windows/PenguinScreen2-VR.ps1"
+				DESTINATION "${CMAKE_SOURCE_DIR}/bin")
+		endif()
 
 		# Copy dependency libraries.
 		set(DEPS_BINDIR "${CMAKE_SOURCE_DIR}/deps/bin")
@@ -1522,8 +1530,16 @@ source_group(Resources REGULAR_EXPRESSION ${CMAKE_CURRENT_BINARY_DIR}/*)
 # C++ exceptions on connection loss, and containing a foreign throw requires
 # landing pads in the frames it unwinds through. Everything else stays
 # -fno-exceptions.
+# MSVC/clang-cl spell it /EHsc (PCSX2 strips /EHsc globally on MSVC). On
+# Windows SeatSession is an inert stub, but XRSession keeps its catch(...)
+# guards around runtime calls.
+if(MSVC)
+	set(PCSX2_VR_EH_FLAG "/EHsc")
+else()
+	set(PCSX2_VR_EH_FLAG "-fexceptions")
+endif()
 set_source_files_properties(VR/SeatSession.cpp VR/XRSession.cpp PROPERTIES
-	COMPILE_OPTIONS "-fexceptions"
+	COMPILE_OPTIONS "${PCSX2_VR_EH_FLAG}"
 	SKIP_PRECOMPILE_HEADERS ON) # the PCH was built -fno-exceptions and refuses to mix
 # XRSession joins the island for its TEARDOWN paths: destroying a session whose
 # WiVRn connection already died makes the client library THROW mid-shutdown,

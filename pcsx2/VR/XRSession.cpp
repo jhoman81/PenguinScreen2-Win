@@ -3,6 +3,7 @@
 
 #include "VR/XRSession.h"
 #include <cstdlib>
+#include "VR/VREnv.h"
 #include "VR/VRInput.h"
 #include "VR/VRManager.h"
 
@@ -131,7 +132,7 @@ namespace VR::XRSession
 			if (old)
 				m_saved = old;
 			m_had_old = (old != nullptr);
-			setenv("XDG_RUNTIME_DIR", dir.c_str(), 1);
+			Env::Set("XDG_RUNTIME_DIR", dir.c_str());
 			m_swapped = true;
 			Console.WriteLn("(VR) XR seat %d: binding runtime socket %s/wivrn/comp_ipc", seat, dir.c_str());
 		}
@@ -140,9 +141,9 @@ namespace VR::XRSession
 			if (!m_swapped)
 				return;
 			if (m_had_old)
-				setenv("XDG_RUNTIME_DIR", m_saved.c_str(), 1);
+				Env::Set("XDG_RUNTIME_DIR", m_saved.c_str());
 			else
-				unsetenv("XDG_RUNTIME_DIR");
+				Env::Unset("XDG_RUNTIME_DIR");
 		}
 		bool refused() const { return m_refuse; }
 

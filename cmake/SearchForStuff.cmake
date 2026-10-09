@@ -119,10 +119,13 @@ if(ENABLE_VR)
 	set(BUILD_CONFORMANCE_TESTS OFF CACHE BOOL "Build OpenXR conformance tests" FORCE)
 	set(BUILD_SDK_TESTS OFF CACHE BOOL "Build OpenXR SDK samples" FORCE)
 	add_subdirectory(3rdparty/openxr EXCLUDE_FROM_ALL)
-	if(NOT MSVC)
-		# The loader's ABI shields (XRLOADER_ABI_TRY/CATCH) require exceptions;
-		# re-enable them for this target only, overriding PCSX2's global
-		# -fno-exceptions/-fno-rtti (last flag wins on GCC/Clang).
+	# The loader's ABI shields (XRLOADER_ABI_TRY/CATCH) and its bundled
+	# jsoncpp require exceptions; re-enable them for this target only,
+	# overriding PCSX2's global -fno-exceptions/-fno-rtti (last flag wins on
+	# GCC/Clang), or the /EHsc that PCSX2 strips from MSVC builds.
+	if(MSVC)
+		target_compile_options(openxr_loader PRIVATE /EHsc)
+	else()
 		target_compile_options(openxr_loader PRIVATE -fexceptions -frtti)
 	endif()
 endif()

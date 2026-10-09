@@ -246,7 +246,7 @@
    <item>
     <widget class="QLabel" name="noteLabel">
      <property name="text">
-      <string>VR requires the Vulkan renderer and an OpenXR runtime (WiVRn is the validated runtime for this Linux/SteamOS release). Changes to Enable VR take effect when the emulator restarts.</string>
+      <string>VR requires the Vulkan renderer (a VR launch switches to it automatically) and an OpenXR runtime: WiVRn on Linux/SteamOS; Virtual Desktop (VDXR), Meta Quest Link or SteamVR on Windows. Changes to Enable VR take effect when the emulator restarts.</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>

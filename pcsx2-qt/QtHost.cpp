@@ -2140,7 +2140,8 @@ void QtHost::PrintCommandLineHelp(const std::string_view progname)
 	std::fprintf(stderr, "  --vr-cast <n>: Also show the other split-screen player's view on XR seat n (2..4).\n");
 	std::fprintf(stderr, "  --vr: Arm VR for THIS launch (explicit per-invocation signal; no environment\n"
 						 "    variable ever arms VR). Without it the binary runs flat and never creates\n"
-						 "    an OpenXR instance. The shipped launch-vr-session.sh passes it.\n");
+						 "    an OpenXR instance. The shipped launch-vr-session.sh (Linux) and\n"
+						 "    PenguinScreen2-VR.bat (Windows) pass it.\n");
 	std::fprintf(stderr, "  -vr-info: Prints OpenXR runtime/headset information and exits.\n");
 #endif
 	std::fprintf(stderr, "  --: Signals that no more arguments will follow and the remaining\n"

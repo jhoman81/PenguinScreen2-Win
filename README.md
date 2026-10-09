@@ -17,6 +17,9 @@ are the author's own work, provided under a separate non-commercial license
   [WiVRn](https://github.com/WiVRn/WiVRn) or another OpenXR runtime - see
   `STACK.md` for the exact versions this release was built and validated
   against.
+- **Or Windows (experimental):** Windows 10/11 x64 with a Vulkan GPU and an
+  OpenXR runtime - Virtual Desktop (VDXR), Meta Quest Link or SteamVR. See
+  `WINDOWS.md`.
 - **Your own PS2 BIOS, dumped from your own console.** No BIOS, game images,
   or copyrighted game data are included or downloaded - ever.
 

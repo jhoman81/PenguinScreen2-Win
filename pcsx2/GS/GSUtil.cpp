@@ -7,6 +7,10 @@
 #include "MultiISA.h"
 #include "common/StringUtil.h"
 
+#ifdef ENABLE_VR
+#include "VR/VRManager.h"
+#endif
+
 #include <array>
 
 #ifdef ENABLE_VULKAN
@@ -268,6 +272,15 @@ u32 GSUtil::GetChannelMask(u32 spsm, u32 fbmsk)
 
 GSRendererType GSUtil::GetPreferredRenderer()
 {
+#if defined(ENABLE_VR) && defined(ENABLE_VULKAN)
+	// The VR layer lives in the Vulkan backend (OpenXR binds through
+	// XR_KHR_vulkan_enable2). "Automatic" means Direct3D on Windows, which
+	// would run a --vr launch flat without saying why. Not cached: VR can be
+	// toggled in settings.
+	if (VR::WantsVR())
+		return GSRendererType::VK;
+#endif
+
 	static GSRendererType preferred_renderer = GSRendererType::Auto;
 	if (preferred_renderer == GSRendererType::Auto)
 	{

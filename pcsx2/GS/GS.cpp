@@ -22,6 +22,10 @@
 #include "GS/Renderers/HW/GSTextureReplacements.h"
 #include "VMManager.h"
 
+#ifdef ENABLE_VR
+#include "VR/VRManager.h"
+#endif
+
 #ifdef ENABLE_OPENGL
 #include "GS/Renderers/OpenGL/GSDeviceOGL.h"
 #endif
@@ -99,6 +103,22 @@ static RenderAPI GetAPIForRenderer(GSRendererType renderer)
 		default:
 			return GetAPIForRenderer(GSUtil::GetPreferredRenderer());
 	}
+}
+
+// A VR launch needs the Vulkan device even when the user picked another
+// hardware renderer (see GSUtil::GetPreferredRenderer for "Automatic").
+static GSRendererType VRRequiredRenderer(GSRendererType renderer)
+{
+#if defined(ENABLE_VR) && defined(ENABLE_VULKAN)
+	if (VR::WantsVR() && renderer != GSRendererType::Auto && renderer != GSRendererType::VK &&
+		renderer != GSRendererType::SW && renderer != GSRendererType::Null)
+	{
+		Console.Warning("(VR) VR needs the Vulkan renderer; using Vulkan instead of %s for this session.",
+			Pcsx2Config::GSOptions::GetRendererName(renderer));
+		return GSRendererType::VK;
+	}
+#endif
+	return renderer;
 }
 
 static bool OpenGSDevice(GSRendererType renderer, bool clear_state_on_fail, bool recreate_window,
@@ -239,6 +259,8 @@ bool GSreopen(bool recreate_device, bool recreate_renderer, GSRendererType new_r
 {
 	Console.WriteLn("Reopening GS with %s device", recreate_device ? "new" : "existing");
 
+	new_renderer = VRRequiredRenderer(new_renderer);
+
 	g_gs_renderer->Flush(GSState::GSFlushReason::GSREOPEN);
 
 	if (recreate_device && !recreate_renderer)
@@ -338,6 +360,7 @@ bool GSopen(const Pcsx2Config::GSOptions& config, GSRendererType renderer, u8* b
 {
 	GSConfig = config;
 
+	renderer = VRRequiredRenderer(renderer);
 	if (renderer == GSRendererType::Auto)
 		renderer = GSUtil::GetPreferredRenderer();
 

@@ -1,6 +1,43 @@
 // SPDX-FileCopyrightText: 2026 Patrick Carey <patrickfcarey@gmail.com>
 // SPDX-License-Identifier: GPL-3.0
 
+#ifdef _WIN32
+
+// A second-headset seat drives another WiVRn/Monado instance directly: it
+// loads that runtime's library by hand and points XDG_RUNTIME_DIR at its
+// socket. Neither exists on Windows, so the seat API is inert there and the
+// main headset path is unaffected.
+
+#include "VR/SeatSession.h"
+#include "VR/SeatCast.h"
+
+#include "common/Console.h"
+
+namespace VR::SeatSession
+{
+	void Start(int seat)
+	{
+		static bool s_warned = false;
+		if (!s_warned)
+		{
+			s_warned = true;
+			Console.Warning("(VR) SeatSession: second-headset seat %d needs Linux + WiVRn; not available on Windows.", seat);
+		}
+	}
+
+	void Stop()
+	{
+		SeatCast::Shutdown();
+	}
+
+	bool Running()
+	{
+		return false;
+	}
+}
+
+#else
+
 #include "VR/SeatSession.h"
 #include "VR/SeatCast.h"
 #include "VR/VRManager.h"
@@ -814,3 +851,5 @@ namespace VR::SeatSession
 		return s_running.load();
 	}
 }
+
+#endif // _WIN32

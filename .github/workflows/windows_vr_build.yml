@@ -1,0 +1,93 @@
+name: Windows VR build
+
+# Builds PenguinScreen2 for Windows x64 with VR (OpenXR on Vulkan) enabled,
+# using upstream PCSX2's CMake + MSVC path and its dependency script
+# (scripts/windows/build-dependencies.bat, taken from upstream at the fork's
+# base, mid-July 2026). The first run builds Qt and friends from source and
+# takes a while; later runs restore them from the cache.
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: CMake MSVC x64 (VR)
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 300
+    env:
+      POWERSHELL_TELEMETRY_OPTOUT: 1
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Locate vcvars
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`call vswhere -latest -property installationPath`) do set "VSINSTPATH=%%i"
+          echo VCVARSPATH=%VSINSTPATH%\VC\Auxiliary\Build\vcvars64.bat>>%GITHUB_ENV%
+
+      - name: Download patches
+        shell: cmd
+        run: |
+          cd bin/resources
+          aria2c -Z "https://github.com/PCSX2/pcsx2_patches/releases/latest/download/patches.zip"
+
+      - name: Cache Dependencies
+        id: cache-deps
+        uses: actions/cache@v6
+        with:
+          path: deps
+          key: windows-2025-vs2026 x64 deps ${{ hashFiles('.github/workflows/scripts/windows/build-dependencies.bat', '.github/workflows/scripts/common/*.patch') }}
+
+      - name: Build Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        env:
+          DEBUG: 0
+          BUILD_FFMPEG: 1
+        run: .github/workflows/scripts/windows/build-dependencies.bat
+
+      - name: Generate CMake
+        shell: cmd
+        run: |
+          call "%VCVARSPATH%" || exit /b
+          cmake . -B build "-DCMAKE_PREFIX_PATH=%cd%\deps" -DQT_BUILD=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DDISABLE_ADVANCE_SIMD=ON -DENABLE_VR=ON -G Ninja
+
+      - name: Build PenguinScreen2
+        shell: cmd
+        run: |
+          call "%VCVARSPATH%" || exit /b
+          cmake --build build --config Release || exit /b
+          cmake --install build --config Release || exit /b
+          REM Segoe UI Emoji is on every Windows install; no need to bundle Twemoji.
+          del bin\resources\fonts\Twemoji*
+          copy /Y WINDOWS.md bin\README-Windows-VR.md
+
+      # No headset on the runner: the report should say no OpenXR runtime is
+      # available. This proves the exe starts and the VR stack (OpenXR loader,
+      # Vulkan bootstrap code) is linked and runs on Windows.
+      - name: Smoke test (-vr-info)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath bin\pcsx2-qt.exe -ArgumentList '-vr-info' -RedirectStandardError vr-info.txt -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); Write-Error 'pcsx2-qt -vr-info hung'; exit 1 }
+          Get-Content vr-info.txt
+          if (-not (Select-String -Path vr-info.txt -Pattern 'OpenXR' -Quiet)) { Write-Error 'no OpenXR report printed'; exit 1 }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: PenguinScreen2-windows-x64-vr-${{ github.sha }}
+          path: |
+            ./bin
+            !./bin/**/*.bsc
+            !./bin/**/*.exp
+            !./bin/**/*.ilk
+            !./bin/**/*.iobj
+            !./bin/**/*.ipdb
+            !./bin/**/*.pdb
+            !./bin/**/*.lib

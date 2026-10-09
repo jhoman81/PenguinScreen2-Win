@@ -100,15 +100,26 @@ void VRSettingsWidget::updateVRStatusBanner()
 			return;
 
 		case VR::SessionStatus::DisabledInConfig:
+#ifdef _WIN32
+			text = tr("VR is turned off. Enable it below, then start the emulator with PenguinScreen2-VR.bat "
+					  "to play in the headset.");
+#else
 			text = tr("VR is turned off. Enable it below, then start the emulator with the VR launch script "
 					  "to play in the headset.");
+#endif
 			accent = QStringLiteral("#3a3f4b");
 			break;
 
 		case VR::SessionStatus::NotLaunchedForVR:
+#ifdef _WIN32
+			text = tr("VR is enabled, but this session was launched WITHOUT the VR runtime, so it is running "
+					  "flat on your monitor. To use the headset, close the emulator and relaunch it with "
+					  "PenguinScreen2-VR.bat (or pass --vr). The settings below still apply to the next VR launch.");
+#else
 			text = tr("VR is enabled, but this session was launched WITHOUT the VR runtime, so it is running "
 					  "flat on your monitor. To use the headset, close the emulator and relaunch it with the VR "
 					  "launch script (launch-vr-session.sh). The settings below still apply to the next VR launch.");
+#endif
 			accent = QStringLiteral("#7a4a00");
 			break;
 
