@@ -331,15 +331,17 @@ namespace VR
 		float screen_height = new_settings.ScreenHeight;
 		float screen_arc = new_settings.ScreenArcDeg;
 		bool screen_follow_head = false;
+		float screen_lag_ms = 0.0f;
 		if (profile)
 		{
 			screen_distance = profile->screen_distance.value_or(screen_distance);
 			screen_height = profile->screen_height.value_or(screen_height);
 			screen_arc = profile->screen_arc_deg.value_or(screen_arc);
 			screen_follow_head = profile->screen_follow_head.value_or(false);
+			screen_lag_ms = profile->screen_lag_ms.value_or(0.0f);
 		}
 		XRCompositor::UpdateScreenParams(screen_distance, screen_height, screen_arc,
-			new_settings.ScreenVerticalOffset, screen_follow_head);
+			new_settings.ScreenVerticalOffset, screen_follow_head, screen_lag_ms);
 
 		StereoState::Params stereo;
 		stereo.separation = new_settings.StereoSeparation;
@@ -652,7 +654,7 @@ namespace VR
 		GSDeviceVK::GetInstance()->ExecuteCommandBuffer(false);
 	}
 
-	void EndOfFrame(GSTexture* current)
+	void EndOfFrame(GSTexture* current, bool new_frame)
 	{
 		if (!XRSession::HasSession())
 			return;
@@ -676,12 +678,12 @@ namespace VR
 		if (st.enabled && s_interleave_debug && !(current && current->GetArrayLayers() >= 2))
 		{
 			const u32 eye = StereoState::GetCurrentEye();
-			XRCompositor::EndOfFrame(current, eye);
+			XRCompositor::EndOfFrame(current, eye, new_frame);
 			StereoState::AdvanceEye();
 		}
 		else
 		{
-			XRCompositor::EndOfFrame(current, XRCompositor::MonoEye);
+			XRCompositor::EndOfFrame(current, XRCompositor::MonoEye, new_frame);
 		}
 	}
 }

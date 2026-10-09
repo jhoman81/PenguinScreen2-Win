@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -1002,6 +1003,21 @@ namespace VR::CameraDriver
 
 		bool s_armed_logged = false;
 
+		std::mutex s_axes_mutex;
+		HeadLookAxes s_axes;
+
+		// Publishes what this vsync's Apply() decided when it goes out of scope, so every early
+		// return reports "not armed" without repeating itself.
+		struct AxesPublisher
+		{
+			HeadLookAxes value;
+			~AxesPublisher()
+			{
+				std::lock_guard lock(s_axes_mutex);
+				s_axes = value;
+			}
+		};
+
 		std::atomic_bool s_recenter_requested{false};
 		bool s_has_reference = false;
 		u32 s_reference_crc = 0;
@@ -1098,6 +1114,7 @@ namespace VR::CameraDriver
 
 	void Apply()
 	{
+		AxesPublisher axes_out;
 		s_vsync_counter++;
 		MaybeRunSelfTest();
 
@@ -1246,6 +1263,29 @@ namespace VR::CameraDriver
 			s_mat_anchor.assign(cam.matrix_writes.size(), MatAnchor{});
 		}
 
+		axes_out.value.armed = true;
+		axes_out.value.ref_x = s_ref_x;
+		axes_out.value.ref_y = s_ref_y;
+		axes_out.value.ref_z = s_ref_z;
+		axes_out.value.ref_w = s_ref_w;
+		const auto note_axis = [&axes_out](ProfileDB::CameraSource src) {
+			if (src == ProfileDB::CameraSource::HeadYaw)
+				axes_out.value.yaw = true;
+			else if (src == ProfileDB::CameraSource::HeadPitch)
+				axes_out.value.pitch = true;
+			else if (src == ProfileDB::CameraSource::HeadRoll)
+				axes_out.value.roll = true;
+		};
+		for (const ProfileDB::CameraWriteOp& op : cam.writes)
+			note_axis(op.source);
+		for (const ProfileDB::CameraCodeHook& h : cam.code_hooks)
+		{
+			if (h.enabled)
+				note_axis(h.source);
+		}
+		if (!cam.matrix_writes.empty())
+			axes_out.value.yaw = axes_out.value.pitch = axes_out.value.roll = true;
+
 		float qx = pose.orientation_x, qy = pose.orientation_y, qz = pose.orientation_z, qw = pose.orientation_w;
 		ApplyReference(qx, qy, qz, qw);
 
@@ -1349,6 +1389,12 @@ namespace VR::CameraDriver
 		s_hook_original.clear();
 		s_hook_scratch_last.clear();
 		s_silence_applied = false;
+	}
+
+	HeadLookAxes GetHeadLookAxes()
+	{
+		std::lock_guard lock(s_axes_mutex);
+		return s_axes;
 	}
 
 	void RequestRecenter()

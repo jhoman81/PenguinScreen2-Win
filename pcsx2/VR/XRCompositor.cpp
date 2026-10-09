@@ -13,6 +13,7 @@
 #include "VR/VRInternal.h"
 #include "VR/VRInput.h"
 #include "VR/XRSession.h"
+#include "VR/CameraDriver.h"
 
 #ifdef ENABLE_VULKAN
 #include "GS/GS.h"
@@ -50,7 +51,8 @@ namespace VR::XRCompositor
 			float arc_deg = 0.0f;
 			float voffset = 0.0f;
 			bool follow_head = false;
-		};
+			float lag_ms = 0.0f;
+			};
 		std::mutex s_screen_mutex;
 		ScreenParams s_screen_params;
 
@@ -137,6 +139,171 @@ namespace VR::XRCompositor
 			bool warned_swapchain = false;
 			VkFormat swapchain_format = VK_FORMAT_R8G8B8A8_SRGB;
 		} s;
+
+		// ---- Lag-matched follow-head screen (screen.lagMs) -------------------------------
+		// A follow-head screen is locked to the head, but the game's picture shows the head
+		// pose the camera driver wrote into the game some frames ago. Unmatched, every head
+		// turn drags the scene along with the screen until the game catches up (the world
+		// "swims"), and small head movements make it wobble. So the compositor remembers the
+		// head orientations it located (one per XR frame, keyed by predicted display time),
+		// and holds the screen at the orientation from lagMs ago, once per new game frame, on
+		// the axes the camera block drives. The scene then stays put in the room; the screen's
+		// edges trail the head a little during fast turns instead.
+		struct PoseSample
+		{
+			XrTime time = 0;
+			XrQuaternionf q = {0.0f, 0.0f, 0.0f, 1.0f};
+		};
+		constexpr u32 POSE_HISTORY = 128; // ~1.4 s at 90 Hz; lagMs is capped at 250
+		PoseSample s_pose_hist[POSE_HISTORY];
+		u32 s_pose_hist_count = 0;
+		u32 s_pose_hist_next = 0;
+
+		XrQuaternionf s_content_q = {0.0f, 0.0f, 0.0f, 1.0f};
+		bool s_content_valid = false;
+		bool s_new_frame_pending = false;
+		u32 s_vsyncs_since_new_frame = 1000;
+		bool s_lag_logged = false;
+
+		XrQuaternionf QMul(const XrQuaternionf& a, const XrQuaternionf& b)
+		{
+			return {a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+				a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+				a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+				a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
+		}
+
+		XrQuaternionf QConj(const XrQuaternionf& q)
+		{
+			return {-q.x, -q.y, -q.z, q.w};
+		}
+
+		XrQuaternionf QNormalize(const XrQuaternionf& q)
+		{
+			const float n2 = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+			if (!std::isfinite(n2) || n2 < 1e-12f)
+				return {0.0f, 0.0f, 0.0f, 1.0f};
+			const float inv = 1.0f / std::sqrt(n2);
+			return {q.x * inv, q.y * inv, q.z * inv, q.w * inv};
+		}
+
+		XrVector3f QRotate(const XrQuaternionf& q, const XrVector3f& v)
+		{
+			const XrQuaternionf p = {v.x, v.y, v.z, 0.0f};
+			const XrQuaternionf r = QMul(QMul(q, p), QConj(q));
+			return {r.x, r.y, r.z};
+		}
+
+		// Same convention as CameraDriver's QuaternionToEulerYXZ: q = Ry(yaw) * Rx(pitch) * Rz(roll).
+		void QToEulerYXZ(const XrQuaternionf& qin, float& yaw, float& pitch, float& roll)
+		{
+			const XrQuaternionf q = QNormalize(qin);
+			const float sinp = 2.0f * (q.w * q.x - q.y * q.z);
+			pitch = (std::abs(sinp) >= 1.0f) ? std::copysign(1.5707963f, sinp) : std::asin(sinp);
+			yaw = std::atan2(2.0f * (q.w * q.y + q.x * q.z), 1.0f - 2.0f * (q.x * q.x + q.y * q.y));
+			roll = std::atan2(2.0f * (q.w * q.z + q.x * q.y), 1.0f - 2.0f * (q.x * q.x + q.z * q.z));
+		}
+
+		XrQuaternionf QFromEulerYXZ(float yaw, float pitch, float roll)
+		{
+			const XrQuaternionf qy = {0.0f, std::sin(yaw * 0.5f), 0.0f, std::cos(yaw * 0.5f)};
+			const XrQuaternionf qx = {std::sin(pitch * 0.5f), 0.0f, 0.0f, std::cos(pitch * 0.5f)};
+			const XrQuaternionf qz = {0.0f, 0.0f, std::sin(roll * 0.5f), std::cos(roll * 0.5f)};
+			return QMul(QMul(qy, qx), qz);
+		}
+
+		void RecordPose(XrTime t, const XrQuaternionf& q)
+		{
+			s_pose_hist[s_pose_hist_next] = {t, QNormalize(q)};
+			s_pose_hist_next = (s_pose_hist_next + 1) % POSE_HISTORY;
+			s_pose_hist_count = std::min(s_pose_hist_count + 1, POSE_HISTORY);
+		}
+
+		// The head orientation located for display time t, blended between the two samples
+		// around it (clamped to the oldest/newest sample outside the history).
+		bool PoseAt(XrTime t, XrQuaternionf& out)
+		{
+			if (s_pose_hist_count == 0)
+				return false;
+			const u32 newest = (s_pose_hist_next + POSE_HISTORY - 1) % POSE_HISTORY;
+			const u32 oldest = (s_pose_hist_next + POSE_HISTORY - s_pose_hist_count) % POSE_HISTORY;
+			if (t >= s_pose_hist[newest].time)
+			{
+				out = s_pose_hist[newest].q;
+				return true;
+			}
+			if (t <= s_pose_hist[oldest].time)
+			{
+				out = s_pose_hist[oldest].q;
+				return true;
+			}
+			for (u32 i = 1; i < s_pose_hist_count; i++)
+			{
+				const PoseSample& a = s_pose_hist[(newest + POSE_HISTORY - i) % POSE_HISTORY];
+				const PoseSample& b = s_pose_hist[(newest + POSE_HISTORY - i + 1) % POSE_HISTORY];
+				if (a.time <= t && t <= b.time)
+				{
+					const float span = static_cast<float>(b.time - a.time);
+					const float f = (span > 0.0f) ? static_cast<float>(t - a.time) / span : 1.0f;
+					XrQuaternionf bq = b.q;
+					if (a.q.x * bq.x + a.q.y * bq.y + a.q.z * bq.z + a.q.w * bq.w < 0.0f)
+						bq = {-bq.x, -bq.y, -bq.z, -bq.w};
+					out = QNormalize({a.q.x + (bq.x - a.q.x) * f, a.q.y + (bq.y - a.q.y) * f,
+						a.q.z + (bq.z - a.q.z) * f, a.q.w + (bq.w - a.q.w) * f});
+					return true;
+				}
+			}
+			out = s_pose_hist[newest].q;
+			return true;
+		}
+
+		// Rotation, in VIEW space, that puts a follow-head screen where the head was when the
+		// game made the picture now on screen. Identity when there is nothing to match.
+		XrQuaternionf LagMatchedScreenRotation(bool follow, float lag_ms, bool have_now,
+			const XrQuaternionf& q_now, XrTime display_time)
+		{
+			const XrQuaternionf identity = {0.0f, 0.0f, 0.0f, 1.0f};
+			const CameraDriver::HeadLookAxes ax = CameraDriver::GetHeadLookAxes();
+			const bool active =
+				follow && lag_ms > 0.0f && have_now && ax.armed && (ax.yaw || ax.pitch || ax.roll);
+			if (!active)
+			{
+				s_content_valid = false;
+				s_lag_logged = false;
+				return identity;
+			}
+			// A game that flags its frames (writes the GS privileged registers when it swaps)
+			// gets one held pose per frame; one that never does is matched every vsync.
+			const bool flags_frames = (s_vsyncs_since_new_frame <= 8);
+			if (!s_content_valid || s_new_frame_pending || !flags_frames)
+			{
+				const XrTime lag_ns = static_cast<XrTime>(static_cast<double>(lag_ms) * 1.0e6);
+				XrQuaternionf q;
+				if (!PoseAt(display_time - lag_ns, q))
+					return identity;
+				s_content_q = q;
+				s_content_valid = true;
+				s_new_frame_pending = false;
+			}
+			if (!s_lag_logged)
+			{
+				s_lag_logged = true;
+				Console.WriteLn("(VR) Screen: lag-matched follow-head screen ON (%.0f ms; axes %s%s%s; %s).",
+					lag_ms, ax.yaw ? "yaw " : "", ax.pitch ? "pitch " : "", ax.roll ? "roll" : "",
+					flags_frames ? "held per game frame" : "matched every vsync");
+			}
+			XrQuaternionf q_eff = s_content_q;
+			if (!(ax.yaw && ax.pitch && ax.roll))
+			{
+				// Only the driven axes are matched; the others stay locked to the head, as before.
+				const XrQuaternionf ref = QNormalize({ax.ref_x, ax.ref_y, ax.ref_z, ax.ref_w});
+				float ny, np, nr, cy, cp, cr;
+				QToEulerYXZ(QMul(QConj(ref), q_now), ny, np, nr);
+				QToEulerYXZ(QMul(QConj(ref), s_content_q), cy, cp, cr);
+				q_eff = QMul(ref, QFromEulerYXZ(ax.yaw ? cy : ny, ax.pitch ? cp : np, ax.roll ? cr : nr));
+			}
+			return QNormalize(QMul(QConj(q_now), q_eff));
+		}
 
 		enum class CopyResult
 		{
@@ -1055,10 +1222,20 @@ namespace VR::XRCompositor
 		return true;
 	}
 
-	void EndOfFrame(GSTexture* current, u32 eye)
+	void EndOfFrame(GSTexture* current, u32 eye, bool new_frame)
 	{
 		if (!s.initialized)
 			return;
+
+		if (new_frame)
+		{
+			s_new_frame_pending = true;
+			s_vsyncs_since_new_frame = 0;
+		}
+		else if (s_vsyncs_since_new_frame < 1000)
+		{
+			s_vsyncs_since_new_frame++;
+		}
 
 		if (s.begin_owed)
 		{
@@ -1115,6 +1292,8 @@ namespace VR::XRCompositor
 
 		XRInput::Update(fs.predictedDisplayTime);
 
+		bool have_head_now = false;
+		XrQuaternionf head_now = {0.0f, 0.0f, 0.0f, 1.0f};
 		if (s.view_space != XR_NULL_HANDLE)
 		{
 			XrSpaceLocation loc = {XR_TYPE_SPACE_LOCATION};
@@ -1134,6 +1313,9 @@ namespace VR::XRCompositor
 				}
 				p.valid = true;
 				HeadPose::Publish(p);
+				head_now = loc.pose.orientation;
+				have_head_now = true;
+				RecordPose(fs.predictedDisplayTime, head_now);
 			}
 			else
 			{
@@ -1246,7 +1428,8 @@ namespace VR::XRCompositor
 
 			const bool follow = sp.follow_head && (s.view_space != XR_NULL_HANDLE);
 			const XrSpace layer_space = follow ? s.view_space : XRSession::GetSpace();
-			const XrQuaternionf follow_quat = {0.0f, 0.0f, 0.0f, 1.0f};
+			const XrQuaternionf follow_quat =
+				LagMatchedScreenRotation(follow, sp.lag_ms, have_head_now, head_now, fs.predictedDisplayTime);
 
 			const auto make_layer = [&](u32 chain_idx, XrEyeVisibility vis) {
 				const XrSwapchainSubImage sub_image = {
@@ -1263,7 +1446,7 @@ namespace VR::XRCompositor
 					if (follow)
 					{
 						cyl.pose.orientation = follow_quat;
-						cyl.pose.position = {0.0f, voffset, 0.0f};
+						cyl.pose.position = QRotate(follow_quat, {0.0f, voffset, 0.0f});
 					}
 					else
 					{
@@ -1285,7 +1468,7 @@ namespace VR::XRCompositor
 					if (follow)
 					{
 						quad.pose.orientation = follow_quat;
-						quad.pose.position = {0.0f, voffset, -distance};
+						quad.pose.position = QRotate(follow_quat, {0.0f, voffset, -distance});
 					}
 					else
 					{
@@ -1346,9 +1529,9 @@ namespace VR::XRCompositor
 					cyl.space = layer_space;
 					cyl.eyeVisibility = vis;
 					cyl.subImage = sub_image;
-					cyl.pose.orientation = vp_quat;
+					cyl.pose.orientation = follow ? QMul(follow_quat, vp_quat) : vp_quat;
 					cyl.pose.position = follow ?
-						XrVector3f{0.0f, voffset, 0.0f} :
+						QRotate(follow_quat, XrVector3f{0.0f, voffset, 0.0f}) :
 						XrVector3f{s.screen_anchor_x, s.screen_anchor_y + voffset, s.screen_anchor_z};
 					cyl.radius = distance;
 					cyl.centralAngle = arc_deg * (3.14159265f / 180.0f) * shape_scale;
@@ -1362,9 +1545,9 @@ namespace VR::XRCompositor
 					quad.space = layer_space;
 					quad.eyeVisibility = vis;
 					quad.subImage = sub_image;
-					quad.pose.orientation = vp_quat;
+					quad.pose.orientation = follow ? QMul(follow_quat, vp_quat) : vp_quat;
 					quad.pose.position = follow ?
-						XrVector3f{-distance * ysin, voffset, -distance * ycos} :
+						QRotate(follow_quat, XrVector3f{-distance * ysin, voffset, -distance * ycos}) :
 						XrVector3f{s.screen_anchor_x - distance * ysin,
 							s.screen_anchor_y + voffset,
 							s.screen_anchor_z - distance * ycos};
@@ -1588,14 +1771,14 @@ namespace VR::XRCompositor
 
 	void Shutdown() {}
 
-	void EndOfFrame(GSTexture* , u32 ) {}
+	void EndOfFrame(GSTexture* , u32 , bool ) {}
 #endif
 
 	void UpdateScreenParams(float distance_m, float height_m, float arc_deg, float vertical_offset_m,
-		bool follow_head)
+		bool follow_head, float lag_ms)
 	{
 		std::lock_guard<std::mutex> lock(s_screen_mutex);
-		s_screen_params = {distance_m, height_m, arc_deg, vertical_offset_m, follow_head};
+		s_screen_params = {distance_m, height_m, arc_deg, vertical_offset_m, follow_head, lag_ms};
 	}
 
 	void RequestScreenReanchor()

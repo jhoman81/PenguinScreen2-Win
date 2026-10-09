@@ -56,6 +56,7 @@ rejects the profile.
 | `height` | metres above the floor |
 | `follow` | `head` keeps the screen in front of you as you turn; `world` leaves it fixed in the room |
 | `arc` | curve of the screen in degrees; below `5` the screen is flat. Needs a VR runtime with cylinder-layer support, otherwise the screen is shown flat |
+| `lagMs` | with `follow: head` and a head camera: how many milliseconds the game's picture trails your head (0 to 250; off when left out). The screen is held where your head was that long ago, once per game frame, on the axes the `camera` block drives, so the scene stays put in the room instead of sliding with every head turn. Raise it if the scene still drags with your head, lower it if it swings back |
 
 A `distance`, `height` or `arc` written here wins over the matching slider in
 the settings window for that game. Leave a key out to keep it adjustable from

@@ -2151,6 +2151,14 @@ bool VR::ProfileDB::parseProfile(const std::string_view serial, const ryml::Node
 			else
 				Console.WarningFmt("(VR) ProfileDB: Serial '{}' has an invalid screen.arc; ignoring it.", serial);
 		}
+		if (scr.has_child("lagMs"))
+		{
+			const std::optional<float> v = StringUtil::FromChars<float>(nodeVal(scr["lagMs"]));
+			if (v.has_value() && std::isfinite(v.value()))
+				out.screen_lag_ms = std::clamp(v.value(), 0.0f, 250.0f);
+			else
+				Console.WarningFmt("(VR) ProfileDB: Serial '{}' has an invalid screen.lagMs; ignoring it.", serial);
+		}
 	}
 
 	if (node.has_child("camera") && node["camera"].is_map())

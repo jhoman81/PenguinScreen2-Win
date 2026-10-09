@@ -64,9 +64,11 @@ int main(int argc, char** argv)
 			std::printf("    disparity at w=%-8g -> %.5f NDC\n", q > 0 ? 1.0f / q : INFINITY,
 				VR::ProfileDB::EvalDisparity(st.resolved, st.separation, st.convergence, q));
 	}
-	std::printf("  screen: follow=%s distance=%s\n",
+	std::printf("  screen: follow=%s distance=%s arc=%s lagMs=%s\n",
 		p->screen_follow_head ? (*p->screen_follow_head ? "head" : "world") : "(setting)",
-		p->screen_distance ? std::to_string(*p->screen_distance).c_str() : "(setting)");
+		p->screen_distance ? std::to_string(*p->screen_distance).c_str() : "(setting)",
+		p->screen_arc_deg ? std::to_string(*p->screen_arc_deg).c_str() : "(setting)",
+		p->screen_lag_ms ? std::to_string(*p->screen_lag_ms).c_str() : "(off)");
 	if (p->camera)
 	{
 		const auto& c = *p->camera;

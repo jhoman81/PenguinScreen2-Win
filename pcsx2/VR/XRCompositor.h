@@ -15,10 +15,10 @@ namespace VR::XRCompositor
 
 	inline constexpr u32 MonoEye = 2;
 
-	void EndOfFrame(GSTexture* current, u32 eye);
+	void EndOfFrame(GSTexture* current, u32 eye, bool new_frame = true);
 
 	void UpdateScreenParams(float distance_m, float height_m, float arc_deg, float vertical_offset_m,
-		bool follow_head = false);
+		bool follow_head = false, float lag_ms = 0.0f);
 
 	void RequestScreenReanchor();
 

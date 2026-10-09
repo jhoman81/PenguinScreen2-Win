@@ -683,7 +683,7 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
 	}
 
 #ifdef ENABLE_VR
-	VR::EndOfFrame(blank_frame ? nullptr : g_gs_device->GetCurrent());
+	VR::EndOfFrame(blank_frame ? nullptr : g_gs_device->GetCurrent(), registers_written);
 #endif
 
 	if (!m_snapshot.empty())
@@ -940,7 +940,7 @@ void GSRenderer::PresentCurrentFrame()
 	}
 
 #ifdef ENABLE_VR
-	VR::EndOfFrame(g_gs_device->GetCurrent());
+	VR::EndOfFrame(g_gs_device->GetCurrent(), false);
 #endif
 }
 

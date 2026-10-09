@@ -384,6 +384,11 @@ namespace VR::ProfileDB
 		std::optional<float> screen_height;
 		std::optional<float> screen_arc_deg;
 		std::optional<bool> screen_follow_head;
+		// screen.lagMs: how far (ms) the game's picture trails the head pose the camera driver
+		// wrote. With follow: head, the compositor holds the screen where the head was that long
+		// ago (on the axes the camera block drives), so the scene stays put in the room instead
+		// of being dragged along by the head-locked screen and catching up. 0 or absent = off.
+		std::optional<float> screen_lag_ms;
 		std::optional<CameraProfile> camera;
 		std::optional<SplitParams> split;
 		std::vector<SpatialControlSpec> controls;

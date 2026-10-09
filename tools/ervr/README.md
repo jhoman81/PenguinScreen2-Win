@@ -6,7 +6,7 @@ follow your head.
 
 | File | What it is |
 |---|---|
-| `SLUS-20015.yaml` | The profile (DRAFT 0.2): stereo with a placeholder convergence, and head yaw, pitch and roll through the game's own camera angles. |
+| `SLUS-20015.yaml` | The profile (DRAFT 0.3): stereo with a placeholder convergence, head yaw, pitch and roll through the game's own camera angles, and a lag-matched follow-head screen. |
 | `../gt4vr/gt4cam.py` | The PINE helper from the GT4 kit. Every generic command works here; the GT4-named ones (`hooktest yaw`, `trace-offset`) don't, but `hooktest <address>` does. |
 | `../gt4vr/dev/` | The profile validator and the mock PINE server. |
 
@@ -133,11 +133,50 @@ facing forward and level (the hotkey, or hold both thumbsticks). Then:
 - **Turning your head left turns the view left**, and the stick still turns you.
 - **Looking up looks up**, and stops at 57°, which is the game's own limit.
 - **Tilting your head left tilts the horizon clockwise** in the picture, so it stays level in the room.
-- **Anything swimming** when you turn: the `screen.arc` doesn't match the game's view.
+- **The scene stays put in the room while you turn** (section 5a). If it
+  still drags with your head or swings back, tune `screen.lagMs`.
 
 Things that may need work: menus and cutscenes also take your head yaw (a
 field-only guard needs a flag from section 6); the game may cull geometry it
 thinks is off-screen when you look steeply up or down.
+
+## 5a. Comfort: shimmer and swim
+
+Two things showed up in the first headset test (DRAFT 0.2).
+
+**Shimmer: turn on the No-Interlacing patch.** The game renders 640×224
+fields and nudges every other one down by half a line (`daddiu $v0, $v0, 8`
+at `0x001CFB44` adds 0.5 px to the GS Y offset; the snapshots hold both
+offsets, 1936.0 and 1936.5). On a TV that's interlacing; on a big VR screen
+the whole picture bobs by a line every frame. The patch nops that
+instruction. Game properties → Patches → *No-Interlacing*. It changes no word
+the profile guards.
+
+**Swim: `screen.lagMs` (needs an emulator build with it).** A follow-head
+screen moves with your head at once, but the game's picture shows your head
+as it was when the camera driver wrote it into the game: the game picks the
+angles up on its next update, draws at about 30 fps, and the frame then
+queues through the GS thread and the compositor. That's roughly 50–80 ms. So
+every head turn drags the scene along with the screen until the game catches
+up, and small head movements make it wobble; smoothing the head input would
+only add more lag. Instead, the compositor now remembers the head
+orientations it located and holds the screen where the head was `lagMs` ago,
+once per new game frame, on the axes the camera block drives. The scene then
+stays put in the room, and the screen's edges trail your head a little
+during fast turns. The log says
+`(VR) Screen: lag-matched follow-head screen ON (60 ms; axes yaw pitch roll; …)`
+when it engages.
+
+Tune it in steps of 10 (edit, then flip a VR setting to reload):
+
+- the scene still **drags with** your head and catches up → raise `lagMs`;
+- it **overshoots** (swings against your head, then settles) → lower it;
+- right: turn your head at an even speed and the walls stay still.
+
+The emulator side: `screen.lagMs` in `VRProfileDB`, the driven axes and
+recenter reference published by `CameraDriver::GetHeadLookAxes()`, and
+`LagMatchedScreenRotation()` in `XRCompositor.cpp`, which takes a "new game
+frame" hint from `GSRenderer::VSync` (the privileged-register write flag).
 
 ## 6. A field flag for the guards
 
@@ -153,10 +192,15 @@ Narrow with fresh snapshots and `--within field` until a handful remain, then
 
 ## Status
 
-**Verified:** the profile (DRAFT 0.2) loads with zero issues in the real
+**Tested in the headset (DRAFT 0.2):** head yaw, pitch and roll work.
+
+**Verified:** the profile (DRAFT 0.3) loads with zero issues in the real
 loader (validator built from `pcsx2/VR/VRProfileDB.cpp`); the only message is
 the separation advisory. The camera record, its update and the view build
 were read from the game's own code in the snapshots.
 
-**Not yet:** the pokes in section 4, the head look in the headset, stereo
-numbers, a field flag.
+The lag-matching math (history lookup, per-axis matching, holding the pose
+between game frames) was checked in a standalone test, and the changed
+emulator sources pass a syntax check against the repo's headers.
+
+**Not yet:** `lagMs` in the headset, stereo numbers, a field flag.

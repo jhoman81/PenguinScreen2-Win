@@ -56,5 +56,8 @@ namespace VR
 
 	void EnsureFrameSubmitted();
 
-	void EndOfFrame(GSTexture* current);
+	// new_frame: the game may have finished a new picture this vsync (it wrote the GS's
+	// privileged registers). The compositor uses it to hold the lag-matched screen pose for
+	// as long as one game frame stays on screen.
+	void EndOfFrame(GSTexture* current, bool new_frame = true);
 }
