@@ -222,7 +222,7 @@ void SettingsWindow::setupUi(const GameList::Entry* game)
 	m_ui.settingsCategory->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
 	m_ui.settingsCategory->setCurrentRow(0);
 	m_ui.settingsContainer->setCurrentIndex(0);
-	m_ui.helpText->setText(m_category_help_text[0]);
+	m_ui.helpText->setText(categoryHelpText(0));
 	connect(m_ui.settingsCategory, &QListWidget::currentRowChanged, this, &SettingsWindow::onCategoryCurrentRowChanged);
 	connect(m_ui.closeButton, &QPushButton::clicked, this, &SettingsWindow::close);
 	if (m_ui.restoreDefaultsButton)
@@ -267,7 +267,7 @@ void SettingsWindow::setCategory(const char* category)
 void SettingsWindow::onCategoryCurrentRowChanged(int row)
 {
 	m_ui.settingsContainer->setCurrentIndex(row);
-	m_ui.helpText->setText(m_category_help_text[row]);
+	m_ui.helpText->setText(categoryHelpText(row));
 }
 
 void SettingsWindow::onRestoreDefaultsClicked()
@@ -359,8 +359,6 @@ void SettingsWindow::reopen(const QString& message)
 
 void SettingsWindow::addWidget(QWidget* widget, QString title, QString icon, QString help_text)
 {
-	const int index = m_ui.settingsCategory->count();
-
 	QListWidgetItem* item = new QListWidgetItem(m_ui.settingsCategory);
 	item->setText(title);
 	if (!icon.isEmpty())
@@ -368,7 +366,13 @@ void SettingsWindow::addWidget(QWidget* widget, QString title, QString icon, QSt
 
 	m_ui.settingsContainer->addWidget(widget);
 
-	m_category_help_text[index] = std::move(help_text);
+	m_category_help_text.push_back(std::move(help_text));
+}
+
+const QString& SettingsWindow::categoryHelpText(int row) const
+{
+	static const QString empty;
+	return (row >= 0 && static_cast<size_t>(row) < m_category_help_text.size()) ? m_category_help_text[row] : empty;
 }
 
 void SettingsWindow::registerWidgetHelp(QObject* object, QString title, QString recommended_value, QString text)
@@ -406,7 +410,7 @@ bool SettingsWindow::eventFilter(QObject* object, QEvent* event)
 		if (m_current_help_widget)
 		{
 			m_current_help_widget = nullptr;
-			m_ui.helpText->setText(m_category_help_text[m_ui.settingsCategory->currentRow()]);
+			m_ui.helpText->setText(categoryHelpText(m_ui.settingsCategory->currentRow()));
 		}
 	}
 	else if (event->type() == QEvent::Wheel)

@@ -11,6 +11,7 @@
 #include <QtCore/QString>
 #include <QtWidgets/QWidget>
 #include <array>
+#include <vector>
 #include <memory>
 
 class QWheelEvent;
@@ -114,11 +115,6 @@ protected:
 	void wheelEvent(QWheelEvent* event) override;
 
 private:
-	enum : u32
-	{
-		MAX_SETTINGS_WIDGETS = 14
-	};
-
 	void setupUi(const GameList::Entry* game);
 
 	void addWidget(QWidget* widget, QString title, QString icon, QString help_text);
@@ -147,7 +143,12 @@ private:
 	AdvancedSettingsWidget* m_advanced_settings = nullptr;
 	DebugSettingsWidget* m_debug_settings = nullptr;
 
-	std::array<QString, MAX_SETTINGS_WIDGETS> m_category_help_text;
+	// One entry per page, in page order. (This was a fixed array of 14; the VR page made a
+	// per-game window with advanced settings on 15 pages, and the 15th help text overwrote the
+	// members after the array, so hovering any option later crashed.)
+	std::vector<QString> m_category_help_text;
+
+	const QString& categoryHelpText(int row) const;
 
 	QObject* m_current_help_widget = nullptr;
 	QMap<QObject*, QString> m_widget_help_text_map;
