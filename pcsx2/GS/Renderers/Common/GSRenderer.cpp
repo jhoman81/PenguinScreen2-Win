@@ -297,6 +297,26 @@ static float GetCurrentAspectRatioFloat(bool is_progressive)
 	}
 }
 
+float GSGetDisplayAspectRatio()
+{
+	const bool is_progressive = g_gs_renderer && (g_gs_renderer->GetVideoMode() == GSVideoMode::SDTV_480P);
+	switch (EmuConfig.CurrentAspectRatio)
+	{
+		case AspectRatioType::RAuto4_3_3_2:
+			if (EmuConfig.CurrentCustomAspectRatio > 0.f)
+				return EmuConfig.CurrentCustomAspectRatio;
+			return is_progressive ? (3.0f / 2.0f) : (4.0f / 3.0f);
+		case AspectRatioType::R4_3:
+			return 4.0f / 3.0f;
+		case AspectRatioType::R16_9:
+			return 16.0f / 9.0f;
+		case AspectRatioType::R10_7:
+			return 10.0f / 7.0f;
+		default:
+			return 0.0f;
+	}
+}
+
 static GSVector4 CalculateDrawDstRect(s32 window_width, s32 window_height, const GSVector4i& src_rect, const GSVector2i& src_size, GSDisplayAlignment alignment, bool flip_y, bool is_progressive)
 {
 	const float f_width = static_cast<float>(window_width);

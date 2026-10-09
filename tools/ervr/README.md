@@ -127,7 +127,13 @@ profile's
 screen: { follow: head, arc: 0, distance: 2.0, height: 1.875, lagMs: 60 }
 ```
 
-is right with the patch on or off. Vertically the game's picture is 7%
+is right with the patch on or off, on an emulator build from `5f…` on (the
+commit after `3d553e7`). Builds before that sized the VR screen from the
+aspect *setting* alone, which stays "Auto 4:3/3:2" when the patch asks for
+16:9, so the 80° picture was squeezed onto a 4:3 screen: the middle of the
+scene then moves at 0.75× head speed and visibly warps as you turn. On an
+older build, set this game's Aspect Ratio to 16:9 (game properties →
+Graphics → Display) whenever the patch is on. Vertically the game's picture is 7%
 squarer than the 4:3 frame shows it (on a TV too), so looking up and down
 moves the scene 7% faster than your head at this size; `height: 1.75` makes
 pitch exact and yaw 7% slow instead.

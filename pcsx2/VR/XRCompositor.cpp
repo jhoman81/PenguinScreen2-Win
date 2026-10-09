@@ -164,6 +164,7 @@ namespace VR::XRCompositor
 		bool s_new_frame_pending = false;
 		u32 s_vsyncs_since_new_frame = 1000;
 		bool s_lag_logged = false;
+		int s_lag_logged_mode = 0;
 
 		XrQuaternionf QMul(const XrQuaternionf& a, const XrQuaternionf& b)
 		{
@@ -285,9 +286,13 @@ namespace VR::XRCompositor
 				s_content_valid = true;
 				s_new_frame_pending = false;
 			}
-			if (!s_lag_logged)
+			// Log when it engages, and when the game starts or stops flagging its frames (the
+			// first few vsyncs never have a flag yet).
+			const int mode = flags_frames ? 2 : 1;
+			if (!s_lag_logged || mode != s_lag_logged_mode)
 			{
 				s_lag_logged = true;
+				s_lag_logged_mode = mode;
 				Console.WriteLn("(VR) Screen: lag-matched follow-head screen ON (%.0f ms; axes %s%s%s; %s).",
 					lag_ms, ax.yaw ? "yaw " : "", ax.pitch ? "pitch " : "", ax.roll ? "roll" : "",
 					flags_frames ? "held per game frame" : "matched every vsync");
@@ -931,20 +936,20 @@ namespace VR::XRCompositor
 			return appended;
 		}
 
+		// The shape the display window shows the game at, so the VR screen matches it. This used
+		// to read GSConfig.AspectRatio alone, which stays "Auto" when a patch asks for 16:9
+		// (gsaspectratio sets CurrentCustomAspectRatio instead): a widescreen-patched game was
+		// then squeezed onto a 4:3 screen. Also follows F6 cycling, the FMV switch and 3:2 for
+		// progressive output in Auto, as the window does. Stretch has no fixed ratio, so it
+		// keeps the source picture's own shape.
 		float ComputeAspect()
 		{
-			switch (GSConfig.AspectRatio)
-			{
-				case AspectRatioType::R4_3:
-				case AspectRatioType::RAuto4_3_3_2:
-					return 4.0f / 3.0f;
-				case AspectRatioType::R16_9:
-					return 16.0f / 9.0f;
-				default:
-					return (s.swapchain_height > 0)
-							   ? static_cast<float>(s.swapchain_width) / static_cast<float>(s.swapchain_height)
-							   : 4.0f / 3.0f;
-			}
+			const float ar = GSGetDisplayAspectRatio();
+			if (ar > 0.0f && std::isfinite(ar))
+				return ar;
+			return (s.swapchain_height > 0)
+					   ? static_cast<float>(s.swapchain_width) / static_cast<float>(s.swapchain_height)
+					   : 4.0f / 3.0f;
 		}
 
 		void PacerThreadMain()

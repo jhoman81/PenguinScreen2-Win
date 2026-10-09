@@ -101,6 +101,11 @@ void GSgetTitleStats(std::string& info);
 
 void GSTranslateWindowToDisplayCoordinates(float window_x, float window_y, float* display_x, float* display_y);
 
+/// The aspect ratio the display window shows the game at: the aspect setting (with F6 cycling and
+/// the FMV switch), and a patch's gsaspectratio override in Auto mode. 0 for Stretch, which has no
+/// fixed ratio. GS thread only. The VR screen uses it so it is shaped like the window's picture.
+float GSGetDisplayAspectRatio();
+
 void GSUpdateConfig(const Pcsx2Config::GSOptions& new_config);
 void GSSetSoftwareRendering(bool software_renderer, GSInterlaceMode new_interlace);
 bool GSSaveSnapshotToMemory(u32 window_width, u32 window_height, bool apply_aspect, bool crop_borders,
