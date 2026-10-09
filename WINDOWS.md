@@ -88,6 +88,10 @@ not, and its guards keep it off when they don't hold.
   the emulator is open, because it writes its in-memory settings back over the
   file. The VR extensions (memory watch, depth histogram flush) are there too.
 - **Depth histogram:** `PenguinScreen2-VR.bat --qhist-live C:\Users\you\qhist`.
+- **Writing a profile:** `tools/gt4vr/` has the Gran Turismo 4 profile (head
+  look through code hooks, seat offset, positional tracking) and `gt4cam.py`,
+  a PINE tool for finding a game's camera code, testing hooks, and checking
+  that a code cave is really free. Most of its commands work on any game.
 
 ## Building from source
 

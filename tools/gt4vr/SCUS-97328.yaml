@@ -1,0 +1,206 @@
+# Gran Turismo 4 (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.5
+# Author: Joshua Homan (with Claude). Your own work; not derived from the
+# shipped CC BY-NC profiles, so license it however you like.
+#
+# Install: copy into your user profiles folder, keeping this file name:
+#   Windows: Documents\PenguinScreen2\vrprofiles\   (no hyphen; not bin\resources)
+#   Linux:   ~/.var/app/org.penguinvr.penguinscreen2/config/PenguinScreen2/vrprofiles/
+# When GT4 boots, the log (Documents\PenguinScreen2\logs\emulog.txt) says
+#   (VR) ProfileDB: SCUS-97328 (CRC 77E61C8A) uses the user profile <this file>
+# and the VR settings page lists "SCUS-97328 - Gran Turismo 4 [immersive]".
+# A different CRC logs "has a VR profile for CRC(s) 77E61C8A, but this disc
+# is ..." instead. A broken file gets a launch dialog naming it and the reason.
+#
+# Status of each block:
+#   stereo   - live. Starting values are placeholders until you run
+#              `gt4cam.py qhist` in a race; it prints tuned numbers.
+#   camera   - live, UNTESTED ON HARDWARE. Head look in the bumper cam via
+#              three code hooks. Prove each site with `gt4cam.py hooktest`
+#              first (README.md); if hooktest says a site never runs in the
+#              bumper view, go back to DRAFT 0.1 and report what it printed.
+#   controls - optional VR steering wheel, commented out.
+#
+# GT4 has no interior cockpit model (in-car interiors arrived with GT5
+# Prologue). The closest retail view is the bumper cam, which is what the
+# camera block targets. The Spec II mod adds an interior silhouette view;
+# it is built on the Online Public Beta (SCUS-97436, Spec II CRC 4CE521F2),
+# so every address below would differ - make a separate SCUS-97436.yaml.
+
+SCUS-97328:
+  name: "Gran Turismo 4"
+  crcs: [0x77E61C8A]
+  tier: immersive
+  notes: "Draft. Bumper cam head look; run in 480p progressive, 16:9 in GT4's Options -> Screen."
+
+  # The game turns its own camera with your head, so the screen has to
+  # travel with your head too, or turning 30 degrees rotates the view twice
+  # (once in the game, once in the room). In the chase cam the game ignores
+  # your head (see the camera notes), so there the screen just stays ahead.
+  screen: { follow: head }
+
+  stereo:
+    # Displacement per eye in NDC is  separation * max(0, 1 - convergence*Q),
+    # Q = 1/w. Anything nearer than `convergence` (in GT4's w units) sits on
+    # the screen surface; everything farther goes into it, reaching
+    # `separation` at infinity. 0.010 is 60 arcmin on the default 2 m /
+    # 100 degree screen: the 1-degree comfort guideline for the jump between
+    # the flat HUD (tach, map) and the horizon behind it. Divergence warnings
+    # start near 0.0152.
+    separation: 0.010
+    convergence: 2.0    # PLACEHOLDER - replace with qhist's suggestion
+    uvDraws: screen     # UV/FST draws (HUD, menus, post-process) stay flat
+    pinUniformQ: false  # turn on only if flat 2D drawn with STQ floats in depth
+    zDrivenDepth: false # turn on if paint reflections or decals separate
+                        # from the bodywork (multi-pass Q mismatch)
+
+    # Menus and replays: add rules once gt4cam.py finds a state flag.
+    # scenes:
+    #   - { when: { address: 0x________, equals: _, width: 1 }, convergence: 16.0, label: menu }
+
+  # ---------------------------------------------------------------------
+  # Head look in the bumper cam (route B: code hooks).
+  #
+  # GT4 builds the view each frame in 0x0037B020 as a chain of calls on
+  # the VU0 matrix: camera sway RotZ/RotX/RotY (degrees in $f12), a small
+  # sway translate, the camera's offset from the car (0x0037B30C), then the
+  # car's own rotation and position. The sway rotations come first, so
+  # they turn the view about the driver's eye - exactly what a head turn
+  # is. Each hook below replaces one of those `jal`s with a jump to a
+  # 5-word cave that adds your head angle (radians x 57.29578 = degrees)
+  # to $f12 and then jumps on to the helper. The add happens after the
+  # game's +/-90 degree clamp on its sway, so your head is not clamped.
+  #
+  # The sway block only runs in camera modes 0 and 25. The bumper cam is
+  # expected to be one of them (its engine shake and G-force tilt come from
+  # this block); the chase cam is not, and there the hooks do nothing.
+  #
+  # The game's order (roll, then pitch, then yaw, applied in eye space) is
+  # the inverse of a yaw-pitch-roll head pose, so the three compose
+  # correctly; if looking 60 degrees left and then up ROLLS the view
+  # instead of tipping it, tell Claude - that would mean the helpers
+  # multiply the other way round.
+  #
+  # axisSign: `gt4cam.py hooktest yaw|pitch|roll --hold 20` says which way
+  # each one should go; flip a sign from 1 to -1 if that axis is reversed.
+  # Recenter with the "VR: Recenter Head Camera" hotkey, facing forward.
+  # Turn the whole thing off with "Head-Tracked Camera" in the VR settings.
+  # ---------------------------------------------------------------------
+  camera:
+    guards:
+      # Untouched words next to the patched calls: they prove this is the
+      # GT4 1.01 code before anything is patched. (Never guard a word the
+      # profile itself patches - the hooks' jals, the silenced delay slots,
+      # the seat jal - or arming would trip its own guard.)
+      - { address: 0x0037B1B0, equals: 0x46000806, width: 4 }   # mov.s $f0, $f1
+      - { address: 0x0037B1CC, equals: 0x0C0E1502, width: 4 }   # jal 0x00385408
+      - { address: 0x0037B1D0, equals: 0x2624020C, width: 4 }   # addiu $a0, $s1, 524
+      - { address: 0x0037B28C, equals: 0x8E230000, width: 4 }   # lw $v1, 0($s1)
+
+    # Memory map of the patches, all in 0x000F1100..0x000F11FF, below the game
+    # (the ELF loads at 0x00100000):
+    #   0x000F1100 / 1120 / 1140   head-look caves (yaw, pitch, roll)
+    #   0x000F1160 / 1164 / 1168   head angles, in degrees (written every frame)
+    #   0x000F1170 / 1174 / 1178   seat offset x, y, z    (writes, below)
+    #   0x000F1180 .. 0x000F11B7   seat/position cave     (silence, below)
+    #   0x000F11C0 / 11C4 / 11C8   head position x, y, z  (writes, below)
+    #   0x000F11D0 .. 0x000F11F3   free for `gt4cam.py hooktest` / `trace-offset`
+    # Checked with cave-check (no reads or writes). To check that the game
+    # never executes it either, with the head camera off on a fresh start:
+    #   gt4cam.py exec-probe 0x000F1100 0x100 --seconds 60
+    # Not 0x00495600+: it is all zero and the game never reads or writes it,
+    # but GT4 executes zeros there (a run of nops) during races, so DRAFT 0.2's
+    # head angles got executed as instructions until one wrecked the stack.
+
+    silence:
+      # Comfort: zero GT4's own camera sway (the G-force lean/tip it layers on
+      # the bumper cam), so the horizon only moves when your head or the car
+      # does. Each patch turns the delay slot that loads the game's sway angle
+      # (mov.s $f12, ...) into mtc1 $zero, $f12; the hooks then add your head
+      # to zero. Comment these three out if you want the game's lean back.
+      - { address: 0x0037B1B8, on: 0x44806000, off: 0x46000306 }   # roll sway  (was mov.s $f12, $f0)
+      - { address: 0x0037B1C0, on: 0x44806000, off: 0x4600AB06 }   # pitch sway (was mov.s $f12, $f21)
+      - { address: 0x0037B1C8, on: 0x44806000, off: 0x4600A306 }   # yaw sway   (was mov.s $f12, $f20)
+      # Probably engine vibration (a noise value x the amplitude at camera+0x230),
+      # applied just before the sway. Uncomment if the view buzzes in VR:
+      # - { address: 0x0037B0D8, on: 0x44806000, off: 0x460C0302 }   # pitch shake (was mul.s $f12, $f0, $f12)
+      # - { address: 0x0037B0F0, on: 0x44806000, off: 0x460C0302 }   # yaw shake   (was mul.s $f12, $f0, $f12)
+
+      # Seat position + positional head tracking. Right after the sway
+      # rotations, GT4 moves the eye by a small G-force bob: jal 0x004A7844
+      # (translate) at 0x0037B284 with $f12/$f13/$f14 = x/y/z. That runs in
+      # the car's frame, before the camera's own offset from the car, so
+      # adding to it moves the eye around inside the car. These patches write
+      # a 14-word cave that adds the seat offset and your head position to
+      # $f12/$f13/$f14, and point that jal at it. (Code hooks can only add to
+      # one register, so this one is written out by hand; "silence" patches
+      # are just "write this word while armed, restore it after".)
+      - { address: 0x000F1180, on: 0x3C01000F, off: 0x00000000 }   # lui   $at, 0x000F
+      - { address: 0x000F1184, on: 0xC4211170, off: 0x00000000 }   # lwc1  $f1, 0x1170($at)   seat x
+      - { address: 0x000F1188, on: 0x46016300, off: 0x00000000 }   # add.s $f12, $f12, $f1
+      - { address: 0x000F118C, on: 0xC42111C0, off: 0x00000000 }   # lwc1  $f1, 0x11C0($at)   head x
+      - { address: 0x000F1190, on: 0x46016300, off: 0x00000000 }   # add.s $f12, $f12, $f1
+      - { address: 0x000F1194, on: 0xC4211174, off: 0x00000000 }   # lwc1  $f1, 0x1174($at)   seat y
+      - { address: 0x000F1198, on: 0x46016B40, off: 0x00000000 }   # add.s $f13, $f13, $f1
+      - { address: 0x000F119C, on: 0xC42111C4, off: 0x00000000 }   # lwc1  $f1, 0x11C4($at)   head y
+      - { address: 0x000F11A0, on: 0x46016B40, off: 0x00000000 }   # add.s $f13, $f13, $f1
+      - { address: 0x000F11A4, on: 0xC4211178, off: 0x00000000 }   # lwc1  $f1, 0x1178($at)   seat z
+      - { address: 0x000F11A8, on: 0x46017380, off: 0x00000000 }   # add.s $f14, $f14, $f1
+      - { address: 0x000F11AC, on: 0xC42111C8, off: 0x00000000 }   # lwc1  $f1, 0x11C8($at)   head z
+      - { address: 0x000F11B0, on: 0x08129E11, off: 0x00000000 }   # j     0x004A7844
+      - { address: 0x000F11B4, on: 0x46017380, off: 0x00000000 }   # add.s $f14, $f14, $f1    (delay slot)
+      - { address: 0x0037B284, on: 0x0C03C460, off: 0x0C129E11 }   # jal 0x000F1180 (was jal 0x004A7844)
+      # Optional horizon lock: drop the car's own body roll and pitch from
+      # the view (the RotZ/RotX calls at 0x0037B448/0x0037B450; the car's
+      # heading stays), so the horizon only tilts when your head does:
+      # - { address: 0x0037B44C, on: 0x44806000, off: 0x4600BB06 }   # car roll  (was mov.s $f12, $f23)
+      # - { address: 0x0037B454, on: 0x44806000, off: 0x4600AB06 }   # car pitch (was mov.s $f12, $f21)
+      # Optional: also zero GT4's G-force bob (the eye sliding around in
+      # corners), like the sway above:
+      # - { address: 0x0037B27C, on: 0x44806000, off: 0x4600AB06 }   # bob x (was mov.s $f12, $f21)
+      # - { address: 0x0037B280, on: 0x44806800, off: 0x4600A346 }   # bob y (was mov.s $f13, $f20)
+      # - { address: 0x0037B288, on: 0x44807000, off: 0x46000386 }   # bob z (was mov.s $f14, $f0)
+
+    codeHooks:
+      # axisSign: yaw and pitch checked with hooktest (-1). Roll -1 follows from
+      # the same conventions (see the writes below); with the wrong roll sign,
+      # every small head tilt rolls the horizon twice as far the wrong way.
+      - { enabled: true, hookAddress: 0x0037B1C4, tailJump: 0x004A79B0, caveAddress: 0x000F1100, scratchAddress: 0x000F1160, source: head_yaw,   scale: 57.29578, axisSign: -1, targetFpr: 12 }   # RotY
+      - { enabled: true, hookAddress: 0x0037B1BC, tailJump: 0x004A7988, caveAddress: 0x000F1120, scratchAddress: 0x000F1164, source: head_pitch, scale: 57.29578, axisSign: -1, targetFpr: 12 }   # RotX
+      - { enabled: true, hookAddress: 0x0037B1B4, tailJump: 0x004A79D8, caveAddress: 0x000F1140, scratchAddress: 0x000F1168, source: head_roll,  scale: 57.29578, axisSign: -1, targetFpr: 12 }   # RotZ
+
+    writes:
+      # Seat offset from the bumper cam, in GT4 units (metres, going by the
+      # chase cam sitting 6 behind the car). Edit the bias numbers while
+      # racing: the profile hot-reloads on save. GT4's translate moves the
+      # world rather than the camera, and its axes look like OpenXR's (x
+      # right, y up, z backward), so every sign comes out inverted: negative
+      # y moves you UP (confirmed), positive x moves you LEFT and positive z
+      # FORWARD (both follow from it). Left-hand-drive cars want x > 0,
+      # right-hand-drive cars x < 0; one value applies to every car for now.
+      - { address: 0x000F1170, encoding: f32, source: constant, bias: 0.50 }    # seat x: + left, - right
+      - { address: 0x000F1174, encoding: f32, source: constant, bias: -0.20 }   # seat y: - up, + down
+      - { address: 0x000F1178, encoding: f32, source: constant, bias: 0.00 }    # seat z: + forward, - back
+      # Positional tracking: your head's offset (metres) from where the
+      # headset's own recenter put it (hold the Oculus button to reset it;
+      # the emulator's recenter hotkey only resets rotation). axisSign per
+      # axis: -1 on all three, for the same inverted-world reason as the
+      # seat; flip one if leaning that way moves the view the other way.
+      # scale 0 turns an axis off.
+      - { address: 0x000F11C0, encoding: f32, source: head_x, scale: 1.0, axisSign: -1, clampMin: -0.3, clampMax: 0.3 }
+      - { address: 0x000F11C4, encoding: f32, source: head_y, scale: 1.0, axisSign: -1, clampMin: -0.3, clampMax: 0.3 }
+      - { address: 0x000F11C8, encoding: f32, source: head_z, scale: 1.0, axisSign: -1, clampMin: -0.3, clampMax: 0.3 }
+
+  # ---------------------------------------------------------------------
+  # Optional: a virtual steering wheel you grab with the VR controllers,
+  # feeding the DualShock 2 left stick (GT4's default steering).
+  # Placement is metres from your recentred head: below and in front.
+  # (A USB Driving Force Pro target would give 900 degrees, but in 1.0-rc2
+  # USB binds only drive one half of an axis, so the pad is the safe path.)
+  # ---------------------------------------------------------------------
+  # controls:
+  #   - device: Wheel
+  #     id: gt4-wheel
+  #     pad: 1
+  #     placement: { side: 0.0, height: -0.35, forward: 0.45, yawDeg: 0 }
+  #     params: { rimRadius: 0.17, lockToLockDeg: 180, steerDeadband: 0.02, steerCurve: 1.0 }
+  #     bind: { Steering: LeftStickX }
