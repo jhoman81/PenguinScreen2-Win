@@ -2260,6 +2260,8 @@ static u32 loadProfileFile(const std::string& path, LoadTier tier,
 		VR::ProfileDB::Profile profile;
 		if (VR::ProfileDB::parseProfile(serial, n, profile))
 		{
+			profile.source_path = path;
+			profile.from_user_folder = (tier == LoadTier::User);
 			if (railsApplyTo(tier == LoadTier::User))
 				railProfile(serial, profile);
 			if (tier == LoadTier::User)
@@ -2581,11 +2583,22 @@ const VR::ProfileDB::Profile* VR::ProfileDB::Lookup(const std::string_view seria
 
 	const Profile& profile = it->second;
 
-	if (profile.crcs.empty() || crc == 0)
+	if (profile.crcs.empty() || crc == 0 ||
+		std::find(profile.crcs.begin(), profile.crcs.end(), crc) != profile.crcs.end())
+	{
+		// Say once per disc which file is in effect: a user copy silently
+		// shadowing (or failing to shadow) the shipped one is easy to miss.
+		static std::mutex s_hit_mutex;
+		static std::unordered_set<std::string> s_hit_logged;
+		const std::string key = fmt::format("{}:{:08X}:{}", StringUtil::toLower(serial), crc, profile.source_path);
+		std::lock_guard lock(s_hit_mutex);
+		if (s_hit_logged.insert(key).second)
+		{
+			Console.WriteLnFmt("(VR) ProfileDB: {} (CRC {:08X}) uses the {} profile {}", serial, crc,
+				profile.from_user_folder ? "user" : "shipped", profile.source_path);
+		}
 		return &profile;
-
-	if (std::find(profile.crcs.begin(), profile.crcs.end(), crc) != profile.crcs.end())
-		return &profile;
+	}
 
 	// A serial can cover several builds (TimeSplitters SLUS-20090 has v1.10 and
 	// v2.00), and a profile's addresses only hold for the CRCs it lists. Skipping

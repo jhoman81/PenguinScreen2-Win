@@ -74,8 +74,13 @@ not, and its guards keep it off when they don't hold.
 
 ## Profiles and tools
 
-- **User VR profiles:** `Documents\PenguinScreen2\vrprofiles`. They work
-  exactly as on Linux; see `bin/resources/vr-profiles/README.md`.
+- **User VR profiles:** `Documents\PenguinScreen2\vrprofiles` (no hyphen).
+  A file there overrides the shipped one for the same serial. Don't add copies
+  to `bin\resources\vr-profiles`: a second file with the same serial in that
+  folder is skipped as a duplicate. When a game boots, the log names the file
+  in effect: `(VR) ProfileDB: SLUS-20090 (CRC B4A004F2) uses the user profile ...`.
+  Otherwise profiles work exactly as on Linux; see
+  `bin/resources/vr-profiles/README.md`.
 - **PINE** (Settings → Advanced): on Windows it listens on TCP
   `127.0.0.1:28011`, not a Unix socket. The VR extensions (memory watch, depth
   histogram flush) are there too.

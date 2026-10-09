@@ -388,6 +388,8 @@ namespace VR::ProfileDB
 		std::optional<SplitParams> split;
 		std::vector<SpatialControlSpec> controls;
 		std::string notes;
+		std::string source_path; // the file this profile was loaded from
+		bool from_user_folder = false;
 	};
 
 	void EnsureLoaded();
