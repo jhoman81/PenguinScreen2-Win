@@ -6,7 +6,7 @@ follow your head.
 
 | File | What it is |
 |---|---|
-| `SLUS-20015.yaml` | The profile (DRAFT 0.3): stereo with a placeholder convergence, head yaw, pitch and roll through the game's own camera angles, and a lag-matched follow-head screen. |
+| `SLUS-20015.yaml` | The profile (DRAFT 0.4): stereo with a placeholder convergence, head yaw, pitch and roll through the game's own camera angles, and a flat, lag-matched follow-head screen sized to the game's view. |
 | `../gt4vr/gt4cam.py` | The PINE helper from the GT4 kit. Every generic command works here; the GT4-named ones (`hooktest yaw`, `trace-offset`) don't, but `hooktest <address>` does. |
 | `../gt4vr/dev/` | The profile validator and the mock PINE server. |
 
@@ -98,15 +98,55 @@ the snapshots took it from −2.88 to 2.03 to 0.03 rad, each step down), so
 `axisSign: -1`. Pitch: +rx tips the view up, so `+1`. Roll: +rz turns the
 picture clockwise, as a left head tilt does, so `+1`.
 
-## 3. Field of view
+## 3. Field of view, and the Widescreen patch
 
-For head look to feel right, the virtual screen must cover the same angle as
-the game's field of view, or the world swims against your head. The stock
-projection gives 2·atan(320/512) ≈ **64°** across a 640-pixel image, so the
-profile sets `screen: { follow: head, arc: 64 }`. With the widescreen patch
-(x focal length 384) it's ≈ 80°. For a wider game view, the profile has
-commented constant writes to `0x001FF100` / `0x001FF114` (untested: check
-first with `er poke 0x1FF100 320 --hold 5` that the game doesn't rewrite them).
+For head look to feel right, every pixel on the virtual screen has to sit
+where the game's camera ray for it points; then a head turn moves the whole
+scene across the screen at exactly head speed. The game's picture is a
+perspective projection, so that takes a **flat** screen sized to the game's
+field of view. A curved screen only matches at the centre and the edges: on
+a 64° curve the middle of the scene moves at 0.89× head speed and the edges
+at 1.24× (at 80°, 0.84× and 1.42×), a swim that grows toward the edges.
+
+The game sets its projection once, at `0x00100FB0`, with what looks like
+libvu0's `sceVu0ViewScreenMatrix` into `0x001FF100`: focal length 512
+horizontally, 256 vertically (it renders 224-line fields), centred at
+2048,2048 on a 640×224 viewport (scissor 0..639 × 0..223). So the view is
+2·atan(320/512) ≈ **64°** wide. The Widescreen 16:9 patch changes the 1.0 at
+`0x00100FCC` to 0.75, which scales the horizontal focal length to 384:
+2·atan(320/384) ≈ **80°**. (The same register is also the near-plane
+argument, so that drops to 0.75 too, harmlessly.)
+
+A flat screen at distance *d* matches when its half width is *d* × tan(half
+angle): at 2.0 m, 2.5 m wide at 4:3 and 3.33 m at 16:9. The emulator sets a
+flat screen's width from `height` × its aspect ratio setting, which the
+patch switches to 16:9, and both cases come out at `height: 1.875`. So the
+profile's
+
+```yaml
+screen: { follow: head, arc: 0, distance: 2.0, height: 1.875, lagMs: 60 }
+```
+
+is right with the patch on or off. Vertically the game's picture is 7%
+squarer than the 4:3 frame shows it (on a TV too), so looking up and down
+moves the scene 7% faster than your head at this size; `height: 1.75` makes
+pitch exact and yaw 7% slow instead.
+
+**Is the Widescreen patch worth it?** In VR, probably: 80° instead of 64°
+is a lot more peripheral view, and with the flat screen it costs no comfort.
+What to watch for:
+
+- **The HUD stretches** 4:3 → 16:9 (the patch only changes the 3D projection).
+- **Culling at the sides.** If the game culls against its old 4:3 view,
+  things would pop in at the left and right edges as you turn. The second
+  matrix the game builds there (`0x001FF140`, focal length 20.48, about 25×
+  wider than the screen) isn't scaled by the patch, but that looks like a
+  guard-band test, not the view. Look along the edges while turning.
+
+`0x001FF100` / `0x001FF114` could also be written as constants for an even
+wider view (the projection is only set at load). Untested; check with
+`er poke 0x1FF100 320 --hold 5` that the game doesn't rewrite it, and resize
+the screen to match.
 
 ## 4. Prove the addresses (two minutes, no headset needed)
 
@@ -192,9 +232,10 @@ Narrow with fresh snapshots and `--within field` until a handful remain, then
 
 ## Status
 
-**Tested in the headset (DRAFT 0.2):** head yaw, pitch and roll work.
+**Tested in the headset:** head yaw, pitch and roll work (DRAFT 0.2); the
+No-Interlacing patch removes the shimmer.
 
-**Verified:** the profile (DRAFT 0.3) loads with zero issues in the real
+**Verified:** the profile (DRAFT 0.4) loads with zero issues in the real
 loader (validator built from `pcsx2/VR/VRProfileDB.cpp`); the only message is
 the separation advisory. The camera record, its update and the view build
 were read from the game's own code in the snapshots.

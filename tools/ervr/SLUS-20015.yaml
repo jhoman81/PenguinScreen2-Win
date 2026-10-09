@@ -1,4 +1,4 @@
-# Eternal Ring (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.3
+# Eternal Ring (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.4
 # Author: Joshua Homan (with Claude). Your own work; not derived from the
 # shipped CC BY-NC profiles, so license it however you like.
 #
@@ -15,8 +15,9 @@
 #            has seen a few minutes of play; it prints tuned numbers.
 #   camera - live, works in the headset (DRAFT 0.2). Head yaw, pitch and roll
 #            through the game's own camera angles (README.md, section 2).
-#   screen - follows the head, sized to the game's 64-degree view, held where
-#            your head was when the picture was made (lagMs; README 5a).
+#   screen - follows the head; flat and sized to the game's projection (64
+#            degrees, or 80 with the Widescreen patch); held where your head
+#            was when the picture was made (lagMs; README 3 and 5a).
 #
 # Turn on the game's "No-Interlacing" patch (game properties -> Patches): the
 # game nudges every other field half a line, which shimmers on a VR screen.
@@ -25,17 +26,32 @@ SLUS-20015:
   name: "Eternal Ring"
   crcs: [0xC7B9F4F7]
   tier: immersive
-  notes: "Draft. Head look through the game's camera angles; stock 4:3 view; turn on the No-Interlacing patch."
+  notes: "Draft. Head look through the game's camera angles; turn on the No-Interlacing patch; Widescreen optional."
 
   # The game's camera turns with your head, so the screen has to go with your
   # head too, or a 30-degree head turn would rotate the view twice (once in
   # the game, once in the room).
   #
-  # arc = the game's horizontal field of view, so that turning your head 30
-  # degrees moves the scene 30 degrees across the screen. If they differ, the
-  # world swims against your head. The stock projection is 512 px of focal
-  # length for a 640 px wide image: 2*atan(320/512) = 64 degrees. With the
-  # Widescreen 16:9 patch on (x scale 384) it is 2*atan(320/384) = 80.
+  # The screen is FLAT and sized to the game's own projection, so every pixel
+  # sits exactly where the game's camera ray for it points: turning your head
+  # moves the whole scene across the screen at exactly head speed. (A curved
+  # screen can't do that for a perspective picture: on the 64-degree curve of
+  # DRAFT 0.3 the middle of the scene moved at 0.89x head speed and the edges at
+  # 1.24x, a swim that grows toward the edges.)
+  #
+  # The game's projection: 512 px of focal length across a 640 px image (half
+  # width 320), i.e. a half-angle tangent of 0.625, 64 degrees across. The
+  # Widescreen 16:9 patch makes the focal length 384: tangent 0.8333, 80
+  # degrees. A flat screen 2.0 m away whose half width is 2.0 x that tangent
+  # matches it: 2.5 m wide at 4:3, 3.33 m at 16:9. The emulator sets the width
+  # from the height and its aspect ratio setting (4:3, or 16:9 when the patch
+  # switches it), and both come out at height 1.875 m - so this one line is
+  # right with the patch on or off.
+  #
+  # Vertically the game's picture is 7% squarer than 4:3 pixels show it (on a
+  # TV too), so at this size looking up and down moves the scene 7% faster
+  # than your head. height 1.75 makes pitch exact and yaw 7% slow instead;
+  # 1.81 splits it.
   #
   # lagMs: the game's picture shows your head as it was this many milliseconds
   # ago (the game runs at about 30 fps and draws a frame behind). A screen glued
@@ -47,14 +63,15 @@ SLUS-20015:
   # windows-port branch after this change (older builds ignore the key).
   # Tune in steps of 10: scene still drags WITH your head -> raise it; scene
   # overshoots and swings back AGAINST your head -> lower it.
-  screen: { follow: head, arc: 64, lagMs: 60 }
+  screen: { follow: head, arc: 0, distance: 2.0, height: 1.875, lagMs: 60 }
 
   stereo:
     # Displacement per eye in NDC is  separation * max(0, 1 - convergence*Q),
     # Q = 1/w. Anything nearer than `convergence` (in the game's w units) sits
     # on the screen surface; everything farther goes into it, reaching
-    # `separation` at infinity. The loader prints an advisory for anything
-    # above its comfort rail; GT4, FF2 and the shipped Ace Combat 5 get it too.
+    # `separation` at infinity: a fraction of the screen width, so 0.010 is
+    # about 38 arcmin on the 64-degree screen and 48 on the 80-degree one. (The
+    # loader's comfort check assumes a curved screen and skips a flat one.)
     separation: 0.010
     convergence: 100.0  # PLACEHOLDER - replace with qhist's suggestion. A guess from the
                         # scale: the eye is 150 units above the floor, and the floor at
