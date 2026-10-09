@@ -1,4 +1,4 @@
-# Eternal Ring (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.4
+# Eternal Ring (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.5
 # Author: Joshua Homan (with Claude). Your own work; not derived from the
 # shipped CC BY-NC profiles, so license it however you like.
 #
@@ -15,18 +15,19 @@
 #            has seen a few minutes of play; it prints tuned numbers.
 #   camera - live, works in the headset (DRAFT 0.2). Head yaw, pitch and roll
 #            through the game's own camera angles (README.md, section 2).
-#   screen - follows the head; flat and sized to the game's projection (64
-#            degrees, or 80 with the Widescreen patch); held where your head
-#            was when the picture was made (lagMs; README 3 and 5a).
+#   screen - follows the head; flat and sized to the game's projection, which
+#            the profile widens to 70 x 86 degrees (README 3); held where your
+#            head was when the picture was made (lagMs; README 5a).
 #
-# Turn on the game's "No-Interlacing" patch (game properties -> Patches): the
-# game nudges every other field half a line, which shimmers on a VR screen.
+# Patches (game properties -> Patches): turn "No-Interlacing" ON (the game
+# nudges every other field half a line, which shimmers on a VR screen) and
+# "Widescreen 16:9" OFF (this profile sets the projection itself).
 
 SLUS-20015:
   name: "Eternal Ring"
   crcs: [0xC7B9F4F7]
   tier: immersive
-  notes: "Draft. Head look through the game's camera angles; turn on the No-Interlacing patch; Widescreen optional."
+  notes: "Draft. Head look, 70x86-degree view; No-Interlacing patch on, Widescreen patch off."
 
   # The game's camera turns with your head, so the screen has to go with your
   # head too, or a 30-degree head turn would rotate the view twice (once in
@@ -39,19 +40,22 @@ SLUS-20015:
   # DRAFT 0.3 the middle of the scene moved at 0.89x head speed and the edges at
   # 1.24x, a swim that grows toward the edges.)
   #
-  # The game's projection: 512 px of focal length across a 640 px image (half
-  # width 320), i.e. a half-angle tangent of 0.625, 64 degrees across. The
-  # Widescreen 16:9 patch makes the focal length 384: tangent 0.8333, 80
-  # degrees. A flat screen 2.0 m away whose half width is 2.0 x that tangent
-  # matches it: 2.5 m wide at 4:3, 3.33 m at 16:9. The emulator sets the width
-  # from the height and its aspect ratio setting (4:3, or 16:9 when the patch
-  # switches it), and both come out at height 1.875 m - so this one line is
-  # right with the patch on or off.
+  # The profile sets the game's projection itself (the two constant writes
+  # at the end of camera.writes), so the view can be taller than the game's
+  # own 47 degrees, and the screen is sized to match. The picture is always
+  # 640 px by 224 field lines; its half-angle tangents are 320/fx across and
+  # 112/fy down, and on a 4:3 screen they must be in a 4:3 ratio. A flat
+  # screen 2.0 m away then matches when height = 4 x the vertical tangent.
   #
-  # Vertically the game's picture is 7% squarer than 4:3 pixels show it (on a
-  # TV too), so at this size looking up and down moves the scene 7% faster
-  # than your head. height 1.75 makes pitch exact and yaw 7% slow instead;
-  # 1.81 splits it.
+  #   view (tall x wide)   fx      fy      screen height
+  #   47 x 60 (stock size) 549.3   256.4   1.748   (exact 4:3; stock is fx 512)
+  #   60 x 75              415.7   194.0   2.309
+  #   70 x 86   <- used    342.8   160.0   2.801
+  #   80 x 96              286.0   133.5   3.356
+  #
+  # Turn the Widescreen 16:9 patch OFF: these writes replace what it changes,
+  # and its 16:9 would need different numbers (70 tall is then 102 wide:
+  # fx 257.1, same fy and height). Change fx, fy and height together.
   #
   # lagMs: the game's picture shows your head as it was this many milliseconds
   # ago (the game runs at about 30 fps and draws a frame behind). A screen glued
@@ -63,15 +67,15 @@ SLUS-20015:
   # windows-port branch after this change (older builds ignore the key).
   # Tune in steps of 10: scene still drags WITH your head -> raise it; scene
   # overshoots and swings back AGAINST your head -> lower it.
-  screen: { follow: head, arc: 0, distance: 2.0, height: 1.875, lagMs: 60 }
+  screen: { follow: head, arc: 0, distance: 2.0, height: 2.801, lagMs: 60 }
 
   stereo:
     # Displacement per eye in NDC is  separation * max(0, 1 - convergence*Q),
     # Q = 1/w. Anything nearer than `convergence` (in the game's w units) sits
     # on the screen surface; everything farther goes into it, reaching
     # `separation` at infinity: a fraction of the screen width, so 0.010 is
-    # about 38 arcmin on the 64-degree screen and 48 on the 80-degree one. (The
-    # loader's comfort check assumes a curved screen and skips a flat one.)
+    # about 52 arcmin on the 86-degree-wide screen. (The loader's comfort check
+    # assumes a curved screen and skips a flat one.)
     separation: 0.010
     convergence: 100.0  # PLACEHOLDER - replace with qhist's suggestion. A guess from the
                         # scale: the eye is 150 units above the floor, and the floor at
@@ -129,11 +133,11 @@ SLUS-20015:
       - { address: 0x001FF350, encoding: f32, source: head_pitch, compose: anchored, scale: 1.0, axisSign: 1, clampMin: -1.0, clampMax: 1.0 }   # camera pitch
       - { address: 0x001FF358, encoding: f32, source: head_roll,  compose: anchored, scale: 1.0, axisSign: 1, clampMin: -0.8, clampMax: 0.8 }   # camera roll
 
-  # Optional: a wider game view, to fill more of the headset. The projection
-  # at 0x001FF100 holds the x focal length (512) and 0x001FF114 the y (256,
-  # half because the game renders fields). Untested: check with
-  #   gt4cam.py poke 0x1FF100 320 --hold 5
-  # that the game doesn't rewrite it. For a 90-degree view (fx = 320/tan 45):
-  #     - { address: 0x001FF100, encoding: f32, source: constant, bias: 320.0 }
-  #     - { address: 0x001FF114, encoding: f32, source: constant, bias: 160.0 }
-  # and set screen.arc to 90 to match. (Those two lines go under writes above.)
+      # The game's projection (focal lengths in pixels; 512 / 256 stock), held
+      # every frame while the head camera is armed: a taller and wider view
+      # (see the table at screen). The game sets it once at boot (0x00100F70),
+      # and event scripts can set it (0x001BF260, fy = fx / 2); these writes
+      # override a script's zoom. Comment both out for the stock view, and set
+      # screen.height back to 1.748.
+      - { address: 0x001FF100, encoding: f32, source: constant, bias: 342.8 }   # x focal length
+      - { address: 0x001FF114, encoding: f32, source: constant, bias: 160.0 }   # y focal length (fields)

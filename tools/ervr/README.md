@@ -6,7 +6,7 @@ follow your head.
 
 | File | What it is |
 |---|---|
-| `SLUS-20015.yaml` | The profile (DRAFT 0.4): stereo with a placeholder convergence, head yaw, pitch and roll through the game's own camera angles, and a flat, lag-matched follow-head screen sized to the game's view. |
+| `SLUS-20015.yaml` | The profile (DRAFT 0.5): stereo with a placeholder convergence, head yaw, pitch and roll through the game's own camera angles, a 70° × 86° view, and a flat, lag-matched follow-head screen sized to it. |
 | `../gt4vr/gt4cam.py` | The PINE helper from the GT4 kit. Every generic command works here; the GT4-named ones (`hooktest yaw`, `trace-offset`) don't, but `hooktest <address>` does. |
 | `../gt4vr/dev/` | The profile validator and the mock PINE server. |
 
@@ -138,21 +138,51 @@ squarer than the 4:3 frame shows it (on a TV too), so looking up and down
 moves the scene 7% faster than your head at this size; `height: 1.75` makes
 pitch exact and yaw 7% slow instead.
 
-**Is the Widescreen patch worth it?** In VR, probably: 80° instead of 64°
-is a lot more peripheral view, and with the flat screen it costs no comfort.
-What to watch for:
+**The Widescreen patch, tried first (DRAFT 0.4):** 80° wide instead of 64°,
+at the cost of a stretched HUD. It works (on a build with the aspect fix),
+but the picture stays only 47° tall, which leaves big black bands above and
+below in a headset. It also only changes the projection at boot; the game's
+event scripts set the projection too (below) and would undo it.
 
-- **The HUD stretches** 4:3 → 16:9 (the patch only changes the 3D projection).
-- **Culling at the sides.** If the game culls against its old 4:3 view,
-  things would pop in at the left and right edges as you turn. The second
-  matrix the game builds there (`0x001FF140`, focal length 20.48, about 25×
-  wider than the screen) isn't scaled by the patch, but that looks like a
-  guard-band test, not the view. Look along the edges while turning.
+### A taller view (DRAFT 0.5)
 
-`0x001FF100` / `0x001FF114` could also be written as constants for an even
-wider view (the projection is only set at load). Untested; check with
-`er poke 0x1FF100 320 --hold 5` that the game doesn't rewrite it, and resize
-the screen to match.
+The game's picture is always 640 px by 224 field lines, but how much of the
+world it covers is up to the projection, and that's plain data: the x and y
+focal lengths at `0x001FF100` and `0x001FF114` (512 and 256 stock). The
+game sets them once at boot (`0x00100F70`, called from `0x001000C0`), builds
+projection × view from them every frame (`0x0011B818`), and an event-script
+command (`0x001BF260`, in the table at `0x0034CCF0`) can set them, with
+fy = fx / 2. So the profile writes both every frame while the head camera is
+armed, for a view taller *and* wider than stock, and sizes the screen to
+match. With the half-angle tangents 320/fx across and 112/fy down in a 4:3
+ratio (which also removes the 7% vertical mismatch), a flat screen 2.0 m
+away matches at height = 4 × the vertical tangent:
+
+| View (tall × wide) | fx | fy | `screen.height` |
+|---|---|---|---|
+| 47° × 60° (stock size, exact 4:3) | 549.3 | 256.4 | 1.748 |
+| 60° × 75° | 415.7 | 194.0 | 2.309 |
+| **70° × 86° (the profile)** | **342.8** | **160.0** | **2.801** |
+| 80° × 96° | 286.0 | 133.5 | 3.356 |
+
+Turn the **Widescreen patch off** with this: the writes replace what it
+changes, and its 16:9 shape would need fx 257.1 for the same 70° height
+(102° wide). Change fx, fy and height together.
+
+What it costs, and what to watch:
+
+- **Sharpness.** The same 448 lines now cover 70° instead of 47°. The
+  emulator renders at its internal resolution, so edges stay crisp if that's
+  high (4× or 5× native is comfortable on an RTX 3070); textures get softer.
+- **Culling.** If the game skips objects outside its stock view, they'd pop
+  in at the edges, top and bottom as you turn. The clip matrix it builds at
+  `0x001FF140` (focal length 20.48, about 25× wider than the stock screen)
+  isn't changed and still covers the wider view, but there may be other
+  tests. Look along the edges while turning.
+- **Sprites and effects** sized with a hard-coded 512 would come out too
+  big. None found yet.
+- **Cutscene zooms** done through the script command are overridden while
+  the head camera is armed.
 
 ## 4. Prove the addresses (two minutes, no headset needed)
 
@@ -241,7 +271,7 @@ Narrow with fresh snapshots and `--within field` until a handful remain, then
 **Tested in the headset:** head yaw, pitch and roll work (DRAFT 0.2); the
 No-Interlacing patch removes the shimmer.
 
-**Verified:** the profile (DRAFT 0.4) loads with zero issues in the real
+**Verified:** the profile (DRAFT 0.5) loads with zero issues in the real
 loader (validator built from `pcsx2/VR/VRProfileDB.cpp`); the only message is
 the separation advisory. The camera record, its update and the view build
 were read from the game's own code in the snapshots.
