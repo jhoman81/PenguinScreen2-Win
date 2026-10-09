@@ -1,0 +1,77 @@
+# Eternal Ring (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.1
+# Author: Joshua Homan (with Claude). Your own work; not derived from the
+# shipped CC BY-NC profiles, so license it however you like.
+#
+# Install: copy into your user profiles folder, keeping this file name:
+#   Windows: Documents\PenguinScreen2\vrprofiles\   (no hyphen; not bin\resources)
+# When the game boots, the log (Documents\PenguinScreen2\logs\emulog.txt) says
+#   (VR) ProfileDB: SLUS-20015 (CRC C7B9F4F7) uses the user profile <this file>
+# After editing it mid-game, flip any VR setting (Stereo off and on) and look
+# for "profile folder change detected - reloading": the emulator rereads the
+# folder at boot and on VR setting changes, not when the file is saved.
+#
+# Status of each block:
+#   stereo - live. `convergence` is a placeholder until `gt4cam.py qhist`
+#            has seen a few minutes of play; it prints tuned numbers.
+#   camera - not yet. Target: head look in the first-person view by driving
+#            the player's own facing and look angles (README.md, section 3).
+#
+# Stereo needs a profile here: with "use game profile" on (the default), a game
+# without one gets no stereo at all, whatever the global sliders say.
+
+SLUS-20015:
+  name: "Eternal Ring"
+  crcs: [0xC7B9F4F7]
+  tier: stereo
+  notes: "Draft. Stereo only for now; first-person head look to come."
+
+  # Stereo only, so the screen stays put in the room. Once the game's view
+  # turns with your head this must become `follow: head`, or a 30-degree head
+  # turn would rotate the view twice (once in the game, once in the room).
+  screen: { follow: world }
+
+  stereo:
+    # Displacement per eye in NDC is  separation * max(0, 1 - convergence*Q),
+    # Q = 1/w. Anything nearer than `convergence` (in the game's w units) sits
+    # on the screen surface; everything farther goes into it, reaching
+    # `separation` at infinity. 0.010 is 60 arcmin on the default 2 m /
+    # 100 degree screen (1 degree, the usual limit for the jump between the
+    # flat HUD and the world behind it). The loader prints an advisory for
+    # anything above 0.0033; GT4, FF2 and the shipped Ace Combat 5 get it too.
+    separation: 0.010
+    convergence: 2.0    # PLACEHOLDER - Eternal Ring's w units are unknown; replace with qhist's suggestion
+    uvDraws: screen     # informational in this build (UV/FST draws always stay flat)
+    pinUniformQ: false  # turn on if full-screen fades or tints float in depth or double
+    zDrivenDepth: false # turn on if decals or glow separate from the surfaces
+                        # they sit on (multi-pass Q mismatch)
+
+    # Menus and the ring-making screen: add a rule once a menu flag is found.
+    # scenes:
+    #   - { when: { address: 0x________, equals: _, width: 1 }, convergence: 16.0, label: menu }
+
+  # ---------------------------------------------------------------------
+  # Head look (template - fill in once README section 3 finds the angles).
+  #
+  # Route A, the TimeSplitters approach: the player's facing (yaw) and look
+  # (pitch) are persistent game state, so `writes` with `compose: delta` add
+  # each frame's head movement to them. The game's own turning keeps working
+  # on top, and everything that aims along your view (attacks, magic, what
+  # you walk towards) follows your head. Units decide `encoding` and `scale`:
+  #   f32 radians                  encoding: f32,    scale: 1.0
+  #   f32 degrees                  encoding: f32,    scale: 57.29578, wrap: deg360 (yaw)
+  #   16-bit, 4096 per turn        encoding: s16.12, scale: 0.1591549
+  #   16-bit, 65536 per turn       encoding: s16.12, scale: 2.546479
+  # (s16.12 stores value x 4096 in a 16-bit word, so those scales give
+  # radians x 4096/2pi and radians x 65536/2pi.)
+  # ---------------------------------------------------------------------
+  # camera:
+  #   guards:
+  #     # An untouched code word next to the camera code (proves this build),
+  #     # and a "walking around in the field" flag, so menus and cutscenes
+  #     # are left alone. Not 0x00100FCC (the widescreen patch rewrites it),
+  #     # 0x001C6EDC or 0x001CFB44 (the no-interlacing patch).
+  #     - { address: 0x________, equals: 0x________, width: 4 }
+  #     - { address: 0x________, equals: _, width: 1 }
+  #   writes:
+  #     - { address: 0x________, encoding: f32, source: head_yaw,   compose: delta, scale: 1.0, axisSign: 1 }
+  #     - { address: 0x________, encoding: f32, source: head_pitch, compose: delta, scale: 1.0, axisSign: 1 }
