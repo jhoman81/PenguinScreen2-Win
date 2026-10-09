@@ -1,12 +1,12 @@
 # Eternal Ring VR profile kit for PenguinScreen2
 
 Goal: good stereo throughout, and head look in the first-person view, driven
-through the player's own facing so that walking, attacks and spells follow
-your head.
+through the game's own camera angles so that walking, attacks and spells
+follow your head.
 
 | File | What it is |
 |---|---|
-| `SLUS-20015.yaml` | The profile (DRAFT 0.1): stereo only, placeholder convergence, a commented camera template. |
+| `SLUS-20015.yaml` | The profile (DRAFT 0.2): stereo with a placeholder convergence, and head yaw, pitch and roll through the game's own camera angles. |
 | `../gt4vr/gt4cam.py` | The PINE helper from the GT4 kit. Every generic command works here; the GT4-named ones (`hooktest yaw`, `trace-offset`) don't, but `hooktest <address>` does. |
 | `../gt4vr/dev/` | The profile validator and the mock PINE server. |
 
@@ -25,7 +25,7 @@ widescreen patch rewrites `0x00100FCC`).
    `profile folder change detected — reloading` in the log.
 3. **Tool.** A separate session folder keeps this game's snapshots apart:
    ```powershell
-   function er { py C:\PS2\vrtools\gt4cam.py --session C:\PS2\vrtools\ersession @args }
+   function er { py C:\PS2\vrtools\gt4cam.py --session $HOME\Documents\PenguinScreen2\ersession @args }
    er info      # serial SLUS-20015, CRC C7B9F4F7, "memory watch available"
    ```
 4. **Headset first.** Connect Virtual Desktop before booting; a boot without it
@@ -34,6 +34,7 @@ widescreen patch rewrites `0x00100FCC`).
    default. Decide on them before hunting addresses, because they rewrite
    code words that guards must then avoid:
    - *Widescreen 16:9*: one word, `0x00100FCC` (`lui $at, 0x3F80` → `0x3F40`, the X field-of-view scale).
+     With it on, set the profile's `screen.arc` to 80 (section 3).
    - *No-Interlacing*: `0x001CFB44` and `0x001C6EDC` (both nopped). If the image
      shimmers or bobs by a line between frames in the headset, turn this on.
 6. **EE rounding.** The game database already sets EE round mode to Nearest
@@ -65,65 +66,82 @@ rules keyed on something that tells them apart. Things to watch for:
 - **Doubled or uncomfortable distance:** `separation` is too high.
 - **Everything flat:** `convergence` is too high.
 
-## 2. Head look: the plan
+## 2. How the camera works (from the code)
 
-This is a first-person game, so the camera *is* the player's eye, and the
-player's facing (yaw) and look angle (pitch) are persistent state: they hold
-still when you let go of the controls.
+Found from the turning snapshots and a read of the camera code in them:
 
-- **Route A (try first): write the player's angles.** Like the shipped
-  TimeSplitters profile: `writes` with `compose: delta` add each frame's head
-  movement to the facing and look angles. The stick still turns you on top,
-  and everything the game aims along your view (where you walk, attacks,
-  magic) follows your head. With `screen: { follow: head }` the screen stays
-  in front of you. Roll has no game state to drive, so it stays off at first.
-- **Route B (fallback): code hooks on the view-matrix build**, as in GT4.
-  Purely visual: your head would turn the picture but not the player, so
-  attacks would go where the body faces. It also needs a free cave, which
-  has to pass both `cave-check` and `exec-probe` in this game first.
+| Address | What it is |
+|---|---|
+| `0x001FF340` | **Camera record, the master copy.** Position x, y, z, 1 (y points down; the eye is 150 above the feet), then at `+0x10` rotation **pitch, yaw, roll**, 1, in radians. |
+| `0x001FF7A0` | Player record: a copy of the camera record made at the start of each update (last frame's pose), with y moved down to the feet. HP is at `0x001FF894` (two u16s, current and max). |
+| `0x001FF400` | Look rates (pitch, yaw), added to the angles each frame and damped. |
+| `0x001FF180` | View matrix (world to camera). `0x001FF390` is the camera's own rotation (its transpose). |
+| `0x001FF100` | Projection: x focal length 512, y 256 (the game renders fields). `0x001FF200` is projection times view. |
 
-## 3. Finding the facing angle
+The update at `0x00119FE0` copies camera to player, adds the rates, clamps
+pitch to ±1.0 rad (`0x0011AFFC..0x0011B028`), wraps yaw to ±π, then builds
+the view at `0x0011B730`: `RotY(π − yaw)`, then `RotX(−pitch)`, then
+`RotZ(roll)`, using what look like Sony's libvu0 rotation helpers
+(`0x001D7820`, `0x001D7778`, `0x001D76D0`). Yaw first, pitch about the
+camera's own axis, roll about the view axis: the right order for a head pose.
 
-Stand somewhere open. Pause the **emulator** each time (its pause hotkey, not
-the game's menu):
+So **the engine already has pitch and roll**. The game's own pitch input
+only works when a flag bit (`0x08` at `0x001FF454`) is set, which may be why
+it seems you can't look up. Nothing needs code patches: all three axes are
+plain `writes` to the camera record, and because the game aims along the
+camera, walking, attacks and spells follow your head. The sky code at
+`0x0010DD2C` even shifts the backdrop by `tan(pitch)`, so looking up and down
+should draw properly.
+
+Signs, read from that code: yaw grows when turning right (the left turns in
+the snapshots took it from −2.88 to 2.03 to 0.03 rad, each step down), so
+`axisSign: -1`. Pitch: +rx tips the view up, so `+1`. Roll: +rz turns the
+picture clockwise, as a left head tilt does, so `+1`.
+
+## 3. Field of view
+
+For head look to feel right, the virtual screen must cover the same angle as
+the game's field of view, or the world swims against your head. The stock
+projection gives 2·atan(320/512) ≈ **64°** across a 640-pixel image, so the
+profile sets `screen: { follow: head, arc: 64 }`. With the widescreen patch
+(x focal length 384) it's ≈ 80°. For a wider game view, the profile has
+commented constant writes to `0x001FF100` / `0x001FF114` (untested: check
+first with `er poke 0x1FF100 320 --hold 5` that the game doesn't rewrite them).
+
+## 4. Prove the addresses (two minutes, no headset needed)
+
+In the field, unpaused, standing still, with the profile **not** installed
+(or VR off):
 
 ```powershell
-er snap s1        # facing some direction
-#   unpause, walk straight forward a few steps WITHOUT turning, pause
-er snap s2        # same facing, different place
-#   unpause, turn left about 45 degrees on the spot, pause
-er snap s3
-#   unpause, turn left about 45 degrees more, pause
-er snap s4
-er find "s1 == s2 and (s1 < s3 < s4 or s1 > s3 > s4)" --snaps s1,s2,s3,s4 --enc f32 --save yawf --show 60
-er find "s1 == s2 and (s1 < s3 < s4 or s1 > s3 > s4)" --snaps s1,s2,s3,s4 --enc s16 --save yaws --show 60
-er find "s1 == s2 and (s1 < s3 < s4 or s1 > s3 > s4)" --snaps s1,s2,s3,s4 --enc u16 --save yawu --show 60
+er poke 0x1FF350 0.4 --hold 5    # pitch: the view should tip UP about 23 degrees for 5 s
+er poke 0x1FF358 0.3 --hold 5    # roll: the horizon should turn CLOCKWISE about 17 degrees
+er poke 0x1FF354 0               # yaw: the view should jump to a new heading and stay there
 ```
 
-That keeps values that didn't change while walking and moved steadily one way
-while turning: the facing angle, and also the sines, cosines and matrix
-entries built from it. The units show in the printed values: radians change
-by about 0.8 per 45°, degrees by about 45, a 4096-per-turn angle by about
-512, a 65536-per-turn angle by about 8192. If a turn crossed the wrap point
-(±180°, or 0/360) the angle drops out, so if nothing angle-like survives,
-repeat facing another way.
+`--hold` puts the old value back afterwards and reports how often the game
+overwrote it; for pitch and roll that should be 0%. If one tips the other
+way, flip that write's `axisSign`. If roll gets overwritten, comment out the
+roll write (the game resets it somewhere) and tell Claude.
 
-Then the proof: `er poke <address> <its s4 value> --enc <enc>` while facing
-the s1 direction. If the view snaps to the s4 direction and the tool says "it
-stuck", that's the facing, and Route A will work on it. If the game rewrites
-it, it's derived from something else, and the listing below finds the master.
+## 5. In the headset
 
-Pitch next, the same way: snap level, walk, look up a little, look up more.
+Install `SLUS-20015.yaml`, connect Virtual Desktop **before** booting, and
+look for `CameraDriver: ARMED` in the log once you're in the field. Recenter
+facing forward and level (the hotkey, or hold both thumbsticks). Then:
 
-**If the direct search finds nothing**, use the GT4 method, which doesn't care
-about units: `er matrices --snaps s1,s3`, then (unpaused, turning slowly)
-`er watch <top matrix> --mode w`, then `er func <writer pc> --listing`. The
-listing shows where the camera code loads its angles from, and also the
-rotation-helper calls Route B would hook.
+- **Turning your head left turns the view left**, and the stick still turns you.
+- **Looking up looks up**, and stops at 57°, which is the game's own limit.
+- **Tilting your head left tilts the horizon clockwise** in the picture, so it stays level in the room.
+- **Anything swimming** when you turn: the `screen.arc` doesn't match the game's view.
 
-## 4. A field flag for the guards
+Things that may need work: menus and cutscenes also take your head yaw (a
+field-only guard needs a flag from section 6); the game may cull geometry it
+thinks is off-screen when you look steeply up or down.
 
-Writes must stop in menus and cutscenes. Find a byte that differs:
+## 6. A field flag for the guards
+
+Not needed yet; useful if head look in menus or cutscenes gets in the way:
 
 ```powershell
 er snap f1 ; er snap m1 ; er snap f2      # field, a menu, field (paused each time)
@@ -133,29 +151,12 @@ er find "f1 == f2 != m1" --snaps f1,m1,f2 --enc u8 --save field
 Narrow with fresh snapshots and `--within field` until a handful remain, then
 `er cands field` in each state.
 
-## Leads (unverified)
-
-- `0x001FF894` (u16): player HP, according to an infinite-health code on the
-  PCSX2 wiki (region not stated, so it may not be this disc).
-- `0x001FF100` (f32, 384.0): a commented-out memory hack in the widescreen
-  patch, so probably a projection value.
-- Together these suggest the player and camera state are static, somewhere
-  around `0x001FF000..0x001FFFFF`. Candidates there are the first to poke.
-
-## Open questions
-
-- How the game looks up and down (which buttons), and whether the view levels
-  itself again on its own. A self-centring pitch wants `compose: anchored`
-  instead of `delta`.
-- 16-bit angles: the loader's `s16.12` encoding saturates instead of wrapping,
-  so a 65536-per-turn facing could stick for a frame at ±180°. Only matters
-  if that's the unit.
-
 ## Status
 
-**Verified:** the profile loads with zero issues in the real loader (validator
-built from `pcsx2/VR/VRProfileDB.cpp`), and so does the camera template once
-filled in with f32 and s16.12 writes. The only message is the expected
-advisory for `separation: 0.010`.
+**Verified:** the profile (DRAFT 0.2) loads with zero issues in the real
+loader (validator built from `pcsx2/VR/VRProfileDB.cpp`); the only message is
+the separation advisory. The camera record, its update and the view build
+were read from the game's own code in the snapshots.
 
-**Not yet:** stereo numbers, the facing and look angles, a field flag.
+**Not yet:** the pokes in section 4, the head look in the headset, stereo
+numbers, a field flag.

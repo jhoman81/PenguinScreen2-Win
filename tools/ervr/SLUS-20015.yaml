@@ -1,4 +1,4 @@
-# Eternal Ring (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.1
+# Eternal Ring (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.2
 # Author: Joshua Homan (with Claude). Your own work; not derived from the
 # shipped CC BY-NC profiles, so license it however you like.
 #
@@ -13,33 +13,38 @@
 # Status of each block:
 #   stereo - live. `convergence` is a placeholder until `gt4cam.py qhist`
 #            has seen a few minutes of play; it prints tuned numbers.
-#   camera - not yet. Target: head look in the first-person view by driving
-#            the player's own facing and look angles (README.md, section 3).
-#
-# Stereo needs a profile here: with "use game profile" on (the default), a game
-# without one gets no stereo at all, whatever the global sliders say.
+#   camera - live, UNTESTED IN THE HEADSET. Head yaw, pitch and roll through
+#            the game's own camera angles (README.md, section 3). The signs
+#            come from reading the camera code; confirm them with the pokes
+#            in README section 4 before trusting them.
 
 SLUS-20015:
   name: "Eternal Ring"
   crcs: [0xC7B9F4F7]
-  tier: stereo
-  notes: "Draft. Stereo only for now; first-person head look to come."
+  tier: immersive
+  notes: "Draft. Head look through the game's camera angles; stock 4:3 view (no widescreen patch)."
 
-  # Stereo only, so the screen stays put in the room. Once the game's view
-  # turns with your head this must become `follow: head`, or a 30-degree head
-  # turn would rotate the view twice (once in the game, once in the room).
-  screen: { follow: world }
+  # The game's camera turns with your head, so the screen has to go with your
+  # head too, or a 30-degree head turn would rotate the view twice (once in
+  # the game, once in the room).
+  #
+  # arc = the game's horizontal field of view, so that turning your head 30
+  # degrees moves the scene 30 degrees across the screen. If they differ, the
+  # world swims against your head. The stock projection is 512 px of focal
+  # length for a 640 px wide image: 2*atan(320/512) = 64 degrees. With the
+  # Widescreen 16:9 patch on (x scale 384) it is 2*atan(320/384) = 80.
+  screen: { follow: head, arc: 64 }
 
   stereo:
     # Displacement per eye in NDC is  separation * max(0, 1 - convergence*Q),
     # Q = 1/w. Anything nearer than `convergence` (in the game's w units) sits
     # on the screen surface; everything farther goes into it, reaching
-    # `separation` at infinity. 0.010 is 60 arcmin on the default 2 m /
-    # 100 degree screen (1 degree, the usual limit for the jump between the
-    # flat HUD and the world behind it). The loader prints an advisory for
-    # anything above 0.0033; GT4, FF2 and the shipped Ace Combat 5 get it too.
+    # `separation` at infinity. The loader prints an advisory for anything
+    # above its comfort rail; GT4, FF2 and the shipped Ace Combat 5 get it too.
     separation: 0.010
-    convergence: 2.0    # PLACEHOLDER - Eternal Ring's w units are unknown; replace with qhist's suggestion
+    convergence: 100.0  # PLACEHOLDER - replace with qhist's suggestion. A guess from the
+                        # scale: the eye is 150 units above the floor, and the floor at
+                        # the bottom edge of the view is about 340 units away.
     uvDraws: screen     # informational in this build (UV/FST draws always stay flat)
     pinUniformQ: false  # turn on if full-screen fades or tints float in depth or double
     zDrivenDepth: false # turn on if decals or glow separate from the surfaces
@@ -50,28 +55,54 @@ SLUS-20015:
     #   - { when: { address: 0x________, equals: _, width: 1 }, convergence: 16.0, label: menu }
 
   # ---------------------------------------------------------------------
-  # Head look (template - fill in once README section 3 finds the angles).
+  # Head look through the game's own camera state.
   #
-  # Route A, the TimeSplitters approach: the player's facing (yaw) and look
-  # (pitch) are persistent game state, so `writes` with `compose: delta` add
-  # each frame's head movement to them. The game's own turning keeps working
-  # on top, and everything that aims along your view (attacks, magic, what
-  # you walk towards) follows your head. Units decide `encoding` and `scale`:
-  #   f32 radians                  encoding: f32,    scale: 1.0
-  #   f32 degrees                  encoding: f32,    scale: 57.29578, wrap: deg360 (yaw)
-  #   16-bit, 4096 per turn        encoding: s16.12, scale: 0.1591549
-  #   16-bit, 65536 per turn       encoding: s16.12, scale: 2.546479
-  # (s16.12 stores value x 4096 in a 16-bit word, so those scales give
-  # radians x 4096/2pi and radians x 65536/2pi.)
+  # The camera record at 0x001FF340 is the master copy:
+  #   +0x00 position x, y, z, 1   (y points down; the eye is 150 above the feet)
+  #   +0x10 rotation x, y, z, 1   (radians: pitch, yaw, roll)
+  # Each frame the update at 0x00119FE0 copies it to the player record at
+  # 0x001FF7A0 (last frame's pose), adds the look rates at 0x001FF400 to
+  # pitch and yaw, clamps pitch to +/-1.0 rad, wraps yaw to +/-pi, then
+  # builds the view at 0x001FF180 as RotY(pi - yaw), RotX(-pitch),
+  # RotZ(roll): yaw first, then pitch about the camera's own x axis, then
+  # roll about the view axis, the right order for a head pose. So all three
+  # axes are plain data writes, and the game's own aim follows your head:
+  # walking, attacks and spells go where you look.
+  #
+  # Signs, from that code: yaw grows turning right (your left turns took it
+  # down), so -1. Pitch: +rx tips the view up (RotX(-rx) with y pointing
+  # down), so +1. Roll: +rz turns the picture clockwise, which is what a
+  # left head tilt does, so +1.
+  #
+  # Yaw is `delta`: each frame's head turn is added to the game's heading,
+  # so the stick keeps turning you as before. Pitch and roll are `anchored`:
+  # your head angle is added to whatever the game holds (normally 0), and
+  # the game's value comes back when the camera disarms. Pitch is clamped to
+  # the game's own +/-1.0 rad (57 degrees) so its clamp never has to fight
+  # the write.
+  #
+  # Recenter (VR: Recenter Head Camera, or hold both thumbsticks) while
+  # facing forward and level; that sets where pitch and roll are zero.
   # ---------------------------------------------------------------------
-  # camera:
-  #   guards:
-  #     # An untouched code word next to the camera code (proves this build),
-  #     # and a "walking around in the field" flag, so menus and cutscenes
-  #     # are left alone. Not 0x00100FCC (the widescreen patch rewrites it),
-  #     # 0x001C6EDC or 0x001CFB44 (the no-interlacing patch).
-  #     - { address: 0x________, equals: 0x________, width: 4 }
-  #     - { address: 0x________, equals: _, width: 1 }
-  #   writes:
-  #     - { address: 0x________, encoding: f32, source: head_yaw,   compose: delta, scale: 1.0, axisSign: 1 }
-  #     - { address: 0x________, encoding: f32, source: head_pitch, compose: delta, scale: 1.0, axisSign: 1 }
+  camera:
+    guards:
+      # Untouched words of this build's camera update; nothing is written
+      # unless they match. (This profile patches no code, so any word in the
+      # update would do.)
+      - { address: 0x0011AFC0, equals: 0xE4410010, width: 4 }   # swc1   $f1, 0x10($v0)   pitch += rate
+      - { address: 0x0011B000, equals: 0x46000834, width: 4 }   # c.lt.s $f1, $f0         pitch clamp at +1.0
+      - { address: 0x0011B770, equals: 0xC62C0018, width: 4 }   # lwc1   $f12, 0x18($s1)  roll -> RotZ
+
+    writes:
+      - { address: 0x001FF354, encoding: f32, source: head_yaw,   compose: delta,    scale: 1.0, axisSign: -1 }   # camera yaw
+      - { address: 0x001FF350, encoding: f32, source: head_pitch, compose: anchored, scale: 1.0, axisSign: 1, clampMin: -1.0, clampMax: 1.0 }   # camera pitch
+      - { address: 0x001FF358, encoding: f32, source: head_roll,  compose: anchored, scale: 1.0, axisSign: 1, clampMin: -0.8, clampMax: 0.8 }   # camera roll
+
+  # Optional: a wider game view, to fill more of the headset. The projection
+  # at 0x001FF100 holds the x focal length (512) and 0x001FF114 the y (256,
+  # half because the game renders fields). Untested: check with
+  #   gt4cam.py poke 0x1FF100 320 --hold 5
+  # that the game doesn't rewrite it. For a 90-degree view (fx = 320/tan 45):
+  #     - { address: 0x001FF100, encoding: f32, source: constant, bias: 320.0 }
+  #     - { address: 0x001FF114, encoding: f32, source: constant, bias: 160.0 }
+  # and set screen.arc to 90 to match. (Those two lines go under writes above.)
