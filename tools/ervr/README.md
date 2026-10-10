@@ -271,7 +271,9 @@ Narrow with fresh snapshots and `--within field` until a handful remain, then
 **Tested in the headset:** head yaw, pitch and roll work (DRAFT 0.2); the
 No-Interlacing patch removes the shimmer; DRAFT 0.4 with the Widescreen
 patch (80° × 47° view, flat lag-matched screen, `lagMs: 60`) at 4× internal
-resolution looks and feels right. DRAFT 0.5's taller view: not yet.
+resolution looks and feels right. DRAFT 0.5's 70° × 86° view: fully
+immersive; the HUD and the pause/inventory menus are harder to read, since
+they now span a screen 86° wide that turns with your head.
 
 **Verified:** the profile (DRAFT 0.5) loads with zero issues in the real
 loader (validator built from `pcsx2/VR/VRProfileDB.cpp`); the only message is
@@ -282,5 +284,6 @@ The lag-matching math (history lookup, per-axis matching, holding the pose
 between game frames) was checked in a standalone test, and the changed
 emulator sources pass a syntax check against the repo's headers.
 
-**Not yet:** DRAFT 0.5's 70° × 86° view, fine-tuning `lagMs`, stereo numbers
-(`qhist`, needs an emulator build with the histogram path fix), a field flag.
+**Not yet:** fine-tuning `lagMs`, stereo numbers (`qhist`, needs an emulator
+build with the histogram path fix), a field flag (and with it, an easier-to-read
+screen in menus).
