@@ -6,7 +6,7 @@ follow your head.
 
 | File | What it is |
 |---|---|
-| `SLUS-20015.yaml` | The profile (DRAFT 0.5): stereo with a placeholder convergence, head yaw, pitch and roll through the game's own camera angles, a 70° × 86° view, and a flat, lag-matched follow-head screen sized to it. |
+| `SLUS-20015.yaml` | The profile (DRAFT 0.6): stereo tuned from `qhist`, head yaw, pitch and roll through the game's own camera angles, a 70° × 86° view, and a flat, lag-matched follow-head screen sized to it. |
 | `../gt4vr/gt4cam.py` | The PINE helper from the GT4 kit. Every generic command works here; the GT4-named ones (`hooktest yaw`, `trace-offset`) don't, but `hooktest <address>` does. |
 | `../gt4vr/dev/` | The profile validator and the mock PINE server. |
 
@@ -65,6 +65,30 @@ rules keyed on something that tells them apart. Things to watch for:
 - **Decals or glow lifting off surfaces:** `zDrivenDepth: true`.
 - **Doubled or uncomfortable distance:** `separation` is too high.
 - **Everything flat:** `convergence` is too high.
+
+**Results (DRAFT 0.6, 70° × 86° view).** Indoors (the cave) and outdoors
+(the beach) the real geometry looks alike: w from ~50, 5th percentile ~80,
+median ~340, and 19–25% beyond w = 1024, the histogram's top. The game's
+units look like centimetres (the eye is 150 above the feet), so that's
+0.8 m, 3.4 m and 10 m+. One setting covers both:
+
+```yaml
+separation: 0.0116   # 1° at infinity on the 86°-wide screen
+convergence: 80.0    # the nearest 5% of the scene on the screen surface
+```
+
+For something closer to real scale: `convergence: 200` (2 m in the game
+lands on the 2 m screen) and `separation: 0.0209` (a 63 mm eye spacing
+gives 1.8° at infinity). Deeper, but walls and enemies nearer than 2 m
+flatten onto the screen.
+
+**A spike at w = 1** (Q = 1): 7% of the picture indoors, 31% outdoors, in
+draws that aren't flagged UV/FST. This stereo map always puts Q = 1 on the
+screen surface, and `hudCollimate` only acts on UV/FST draws, so the profile
+can't move them. Outdoors it's most likely the sky; indoors maybe the HUD.
+If the sky reads as a flat backdrop in front of distant cliffs, a GS dump of
+an outdoor frame would show what those draws are and whether the emulator
+could push them to infinity.
 
 ## 2. How the camera works (from the code)
 
@@ -275,7 +299,7 @@ resolution looks and feels right. DRAFT 0.5's 70° × 86° view: fully
 immersive; the HUD and the pause/inventory menus are harder to read, since
 they now span a screen 86° wide that turns with your head.
 
-**Verified:** the profile (DRAFT 0.5) loads with zero issues in the real
+**Verified:** the profile (DRAFT 0.6) loads with zero issues in the real
 loader (validator built from `pcsx2/VR/VRProfileDB.cpp`); the only message is
 the separation advisory. The camera record, its update and the view build
 were read from the game's own code in the snapshots.
@@ -284,6 +308,5 @@ The lag-matching math (history lookup, per-axis matching, holding the pose
 between game frames) was checked in a standalone test, and the changed
 emulator sources pass a syntax check against the repo's headers.
 
-**Not yet:** fine-tuning `lagMs`, stereo numbers (`qhist`, needs an emulator
-build with the histogram path fix), a field flag (and with it, an easier-to-read
-screen in menus).
+**Not yet:** the tuned stereo in the headset, fine-tuning `lagMs`, a field
+flag (and with it, an easier-to-read screen in menus).

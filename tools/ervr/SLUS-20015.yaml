@@ -1,4 +1,4 @@
-# Eternal Ring (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.5
+# Eternal Ring (NTSC-U retail) - PenguinScreen2 user profile, DRAFT 0.6
 # Author: Joshua Homan (with Claude). Your own work; not derived from the
 # shipped CC BY-NC profiles, so license it however you like.
 #
@@ -11,8 +11,7 @@
 # folder at boot and on VR setting changes, not when the file is saved.
 #
 # Status of each block:
-#   stereo - live. `convergence` is a placeholder until `gt4cam.py qhist`
-#            has seen a few minutes of play; it prints tuned numbers.
+#   stereo - live, tuned from qhist (cave and beach).
 #   camera - live, works in the headset (DRAFT 0.2). Head yaw, pitch and roll
 #            through the game's own camera angles (README.md, section 2).
 #   screen - follows the head; flat and sized to the game's projection, which
@@ -73,13 +72,28 @@ SLUS-20015:
     # Displacement per eye in NDC is  separation * max(0, 1 - convergence*Q),
     # Q = 1/w. Anything nearer than `convergence` (in the game's w units) sits
     # on the screen surface; everything farther goes into it, reaching
-    # `separation` at infinity: a fraction of the screen width, so 0.010 is
-    # about 52 arcmin on the 86-degree-wide screen. (The loader's comfort check
-    # assumes a curved screen and skips a flat one.)
-    separation: 0.010
-    convergence: 100.0  # PLACEHOLDER - replace with qhist's suggestion. A guess from the
-                        # scale: the eye is 150 units above the floor, and the floor at
-                        # the bottom edge of the view is about 340 units away.
+    # `separation` at infinity: a fraction of the screen width, so 0.0116 is
+    # 1 degree (60 arcmin) on the 86-degree-wide screen. (The loader's comfort
+    # check assumes a curved screen and skips a flat one.)
+    #
+    # From qhist (indoors in the cave, then outdoors on the beach; README 1).
+    # The game's units look like centimetres (the eye is 150 above the feet).
+    # Real geometry runs from w ~50 up: 5th percentile ~80, median ~340, and
+    # 19-25% beyond 1024 (past the histogram's top). So the nearest 5% sits on
+    # the screen and the median scene gets ~77% of the depth budget.
+    #
+    # Alternative, closer to real scale: the screen is 2 m away, so
+    # convergence 200 puts things 2 m away in the game exactly at the screen,
+    # and separation 0.0209 is the 63 mm eye spacing's 1.8 degrees at
+    # infinity. Bigger depth, but anything nearer than 2 m (walls, enemies in
+    # melee range) flattens onto the screen.
+    #
+    # Not geometry: 7% (indoors) to 31% (outdoors) of the picture is drawn
+    # with Q = 1, which this map always puts on the screen surface. Outdoors
+    # that's most likely the sky. If the sky looks like a flat backdrop in
+    # front of distant cliffs, that's why (README 1).
+    separation: 0.0116
+    convergence: 80.0
     uvDraws: screen     # informational in this build (UV/FST draws always stay flat)
     pinUniformQ: false  # turn on if full-screen fades or tints float in depth or double
     zDrivenDepth: false # turn on if decals or glow separate from the surfaces
